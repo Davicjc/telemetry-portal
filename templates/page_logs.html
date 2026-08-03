@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Logs - Telemetry Portal{% endblock %}
+{% block content %}
+    <div class="card">
+        <h2>📜 Logs de Auditoria</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            Histórico de ações (somente leitura — não pode ser apagado). Mostrando os 300 mais recentes.
+        </p>
+        <table>
+            <thead>
+                <tr><th>Data / Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th></tr>
+            </thead>
+            <tbody>
+                {% for l in logs %}
+                <tr>
+                    <td style="white-space:nowrap; color: var(--text-muted);">{{ l[0] }}</td>
+                    <td><strong>{{ l[1] }}</strong></td>
+                    <td>{{ l[2] }}</td>
+                    <td style="color: var(--text-muted);">{{ l[3] }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Nenhum registro ainda.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

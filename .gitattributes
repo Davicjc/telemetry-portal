@@ -1,0 +1,5 @@
+# Garante finais de linha LF no repositório (scripts .sh precisam disso no Linux)
+* text=auto eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.html text eol=lf

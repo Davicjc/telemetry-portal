@@ -1,0 +1,136 @@
+{
+  "uid": "core-telemetry",
+  "title": "🛰️ Telemetria de Core — OSPF & BFD",
+  "description": "Saúde das vizinhanças OSPF e sessões BFD dos PEs, via Telemetry Portal (Mikrotik).",
+  "tags": ["core", "ospf", "bfd", "mikrotik", "noc"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-6h", "to": "now" },
+  "links": [
+    {
+      "title": "⚙️ Configurar",
+      "type": "link",
+      "url": "http://REPLACE_VM_IP:8080/",
+      "icon": "cog",
+      "tooltip": "Abrir o portal: cadastrar PEs, nomear e ignorar vizinhos",
+      "targetBlank": true,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "PE",
+        "label": "Roteador (PE)",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "hide": 0, "includeAll": true, "multi": true, "refresh": 2, "sort": 1, "options": [],
+        "definition": "router",
+        "query": {
+          "queryType": "infinity",
+          "infinityQuery": {
+            "refId": "variable", "type": "json", "source": "url", "format": "table", "parser": "backend",
+            "url": "http://REPLACE_VM_IP:8080/api/routers",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "$",
+            "columns": [ { "selector": "router", "text": "router", "type": "string" } ]
+          }
+        }
+      }
+    ]
+  },
+  "panels": [
+    { "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 90, "title": "🛰️ Visão Geral do Core", "type": "row", "collapsed": false, "panels": [] },
+
+    {
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 }, "id": 10, "title": "PEs Monitorados", "type": "stat", "transparent": true,
+      "description": "Total de roteadores PE reportando telemetria.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/summary", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "pes", "text": "PEs", "type": "number" } ] } ],
+      "fieldConfig": { "defaults": { "noValue": "0", "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "purple" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "purple", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 5, "w": 3, "x": 4, "y": 1 }, "id": 11, "title": "OSPF ✅", "type": "stat", "transparent": true,
+      "description": "Vizinhos OSPF em Full.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/summary", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "ospf_up", "text": "UP", "type": "number" } ] } ],
+      "fieldConfig": { "defaults": { "noValue": "0", "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "green" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 5, "w": 3, "x": 7, "y": 1 }, "id": 12, "title": "OSPF ❌", "type": "stat", "transparent": true,
+      "description": "Vizinhos OSPF fora de Full.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/summary", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "ospf_down", "text": "DOWN", "type": "number" } ] } ],
+      "fieldConfig": { "defaults": { "noValue": "0", "unit": "short", "decimals": 0, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 5, "w": 3, "x": 10, "y": 1 }, "id": 13, "title": "BFD ✅", "type": "stat", "transparent": true,
+      "description": "Sessões BFD ativas.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/summary", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "bfd_up", "text": "UP", "type": "number" } ] } ],
+      "fieldConfig": { "defaults": { "noValue": "0", "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "green" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 5, "w": 3, "x": 13, "y": 1 }, "id": 14, "title": "BFD ❌", "type": "stat", "transparent": true,
+      "description": "Sessões BFD caídas.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/summary", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "bfd_down", "text": "DOWN", "type": "number" } ] } ],
+      "fieldConfig": { "defaults": { "noValue": "0", "unit": "short", "decimals": 0, "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 1 }, "id": 15, "title": "📶 Disponibilidade do Core (%)", "type": "bargauge", "transparent": true,
+      "description": "Percentual de vizinhanças/sessões saudáveis.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/summary", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "ospf_avail", "text": "OSPF", "type": "number" }, { "selector": "bfd_avail", "text": "BFD", "type": "number" } ] } ],
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "min": 0, "max": 100, "noValue": "0", "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "orange", "value": 90 }, { "color": "green", "value": 99 } ] } }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "orientation": "horizontal", "displayMode": "gradient", "valueMode": "color", "showUnfilled": true, "minVizWidth": 0, "minVizHeight": 10 }
+    },
+
+    {
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 6 }, "id": 16, "title": "🔔 Alarmes Ativos  (vazio = tudo OK ✅)", "type": "table", "transparent": true,
+      "description": "Todas as vizinhanças OSPF e sessões BFD fora do ar, em qualquer PE.",
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/alarms", "url_options": { "method": "GET" }, "root_selector": "$", "columns": [ { "selector": "router", "text": "Roteador", "type": "string" }, { "selector": "tipo", "text": "Tipo", "type": "string" }, { "selector": "alvo", "text": "Vizinho / Sessão", "type": "string" }, { "selector": "state", "text": "Status", "type": "string" } ] } ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": true }, "color": { "mode": "thresholds" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Tipo" }, "properties": [ { "id": "custom.align", "value": "center" }, { "id": "custom.width", "value": 90 }, { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "mappings", "value": [ { "type": "value", "options": { "OSPF": { "color": "blue", "index": 0 }, "BFD": { "color": "purple", "index": 1 } } } ] } ] },
+          { "matcher": { "id": "byName", "options": "Status" }, "properties": [ { "id": "custom.align", "value": "center" }, { "id": "custom.width", "value": 160 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "mappings", "value": [ { "type": "value", "options": { "down": { "color": "dark-red", "index": 0, "text": "❌ DOWN" }, "inactive": { "color": "dark-red", "index": 1, "text": "❌ INACTIVE" }, "admin-down": { "color": "orange", "index": 2, "text": "⚠️ ADMIN DOWN" }, "offline": { "color": "red", "index": 3, "text": "🔌 OFFLINE (sumiu)" } } } ] } ] }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "md", "footer": { "show": false } }
+    },
+
+    { "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 }, "id": 100, "title": "📍 $PE", "type": "row", "repeat": "PE", "repeatDirection": "h", "collapsed": false, "panels": [] },
+
+    {
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 13 }, "id": 1, "title": "🌐 Vizinhos OSPF — $PE", "type": "table", "transparent": true,
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/grafana", "url_options": { "method": "GET" }, "root_selector": "$[router = '$PE'].ospf", "columns": [ { "selector": "label", "text": "Vizinho", "type": "string" }, { "selector": "state", "text": "Status", "type": "string" } ] } ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": true }, "color": { "mode": "thresholds" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Vizinho" }, "properties": [ { "id": "custom.width", "value": 220 } ] },
+          { "matcher": { "id": "byName", "options": "Status" }, "properties": [ { "id": "custom.align", "value": "center" }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "mappings", "value": [ { "type": "value", "options": { "Full": { "color": "dark-green", "index": 0, "text": "✅ UP (FULL)" }, "up": { "color": "dark-green", "index": 1, "text": "✅ UP" }, "down": { "color": "dark-red", "index": 2, "text": "❌ DOWN" }, "inactive": { "color": "dark-red", "index": 3, "text": "❌ INACTIVE" }, "offline": { "color": "red", "index": 4, "text": "🔌 OFFLINE (sumiu)" } } } ] } ] }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "md", "footer": { "show": false } }
+    },
+    {
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 13 }, "id": 2, "title": "⚡ Sessões BFD — $PE", "type": "table", "transparent": true,
+      "targets": [ { "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" }, "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table", "url": "http://REPLACE_VM_IP:8080/api/grafana", "url_options": { "method": "GET" }, "root_selector": "$[router = '$PE'].bfd", "columns": [ { "selector": "label", "text": "Vizinho", "type": "string" }, { "selector": "interface", "text": "Interface", "type": "string" }, { "selector": "state", "text": "Status", "type": "string" } ] } ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": true }, "color": { "mode": "thresholds" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Vizinho" }, "properties": [ { "id": "custom.width", "value": 140 } ] },
+          { "matcher": { "id": "byName", "options": "Status" }, "properties": [ { "id": "custom.align", "value": "center" }, { "id": "custom.width", "value": 150 }, { "id": "custom.cellOptions", "value": { "type": "color-background" } }, { "id": "mappings", "value": [ { "type": "value", "options": { "up": { "color": "dark-green", "index": 0, "text": "✅ UP" }, "down": { "color": "dark-red", "index": 1, "text": "❌ DOWN" }, "inactive": { "color": "dark-red", "index": 2, "text": "❌ INACTIVE" }, "admin-down": { "color": "orange", "index": 3, "text": "⚠️ ADMIN DOWN" }, "offline": { "color": "red", "index": 4, "text": "🔌 OFFLINE (sumiu)" } } } ] } ] }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "md", "footer": { "show": false } }
+    }
+  ]
+}

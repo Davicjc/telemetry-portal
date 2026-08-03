@@ -1,0 +1,12 @@
+[Unit]
+Description=Telemetry Portal (OSPF/BFD - MikroTik)
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=__DIR__
+ExecStart=__DIR__/venv/bin/python app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

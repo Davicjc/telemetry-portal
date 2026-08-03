@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Gráficos - Telemetry Portal{% endblock %}
+{% block extra_css %}
+        .stats { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem; }
+        .stat { flex:1; min-width:120px; background:var(--glass-bg); border:1px solid var(--glass-border);
+                border-radius:1rem; padding:1.2rem 1rem; text-align:center; }
+        .stat .v { font-size:2.2rem; font-weight:800; line-height:1; }
+        .stat .l { color:var(--text-muted); font-size:.8rem; margin-top:.5rem; text-transform:uppercase; letter-spacing:.03em; }
+        .v-ok{color:var(--ok);} .v-bad{color:var(--danger);} .v-info{color:#a78bfa;}
+        .badge{ padding:.2rem .6rem; border-radius:999px; font-size:.8rem; font-weight:600; white-space:nowrap; }
+        .b-ok{background:rgba(52,211,153,.15);color:#34d399;}
+        .b-down{background:rgba(239,68,68,.15);color:#f87171;}
+        .b-off{background:rgba(239,68,68,.28);color:#fca5a5;}
+        .b-warn{background:rgba(249,115,22,.15);color:#fb923c;}
+        .bar{ height:16px; border-radius:999px; background:rgba(0,0,0,.25); overflow:hidden; margin-top:.4rem; }
+        .bar > span{ display:block; height:100%; border-radius:999px; transition:width .5s ease; }
+        .avail-row{ margin-bottom:1rem; }
+        .avail-row .top{ display:flex; justify-content:space-between; font-weight:600; }
+        .muted{ color:var(--text-muted); }
+        .pe-card{ margin-bottom:1.5rem; }
+        .pe-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem; margin-bottom:1.2rem; }
+        .pe-head .name{ font-size:1.15rem; font-weight:700; }
+        .pe-head .sub{ display:flex; gap:.5rem; flex-wrap:wrap; }
+        .pe-cols{ display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+        .pe-cols h3{ font-size:.95rem; font-weight:600; color:var(--text-muted); margin-bottom:.6rem; }
+        @media (max-width: 900px){ .pe-cols{ grid-template-columns:1fr; } }
+{% endblock %}
+{% block content %}
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+        <h2 style="font-weight:600;">📊 Painel de Status (ao vivo)</h2>
+        <span class="muted" id="updated">carregando…</span>
+    </div>
+
+    <div class="stats">
+        <div class="stat"><div class="v v-info" id="c_pes">–</div><div class="l">PEs</div></div>
+        <div class="stat"><div class="v v-ok"  id="c_ou">–</div><div class="l">OSPF ✅</div></div>
+        <div class="stat"><div class="v"       id="c_od">–</div><div class="l">OSPF ❌</div></div>
+        <div class="stat"><div class="v v-ok"  id="c_bu">–</div><div class="l">BFD ✅</div></div>
+        <div class="stat"><div class="v"       id="c_bd">–</div><div class="l">BFD ❌</div></div>
+    </div>
+
+    <div class="card" style="margin-bottom:2rem;">
+        <h2>📶 Disponibilidade do Core</h2>
+        <div class="avail-row">
+            <div class="top"><span>OSPF</span><span id="a_ospf_t">–</span></div>
+            <div class="bar"><span id="a_ospf_b" style="width:0%; background:var(--ok);"></span></div>
+        </div>
+        <div class="avail-row">
+            <div class="top"><span>BFD</span><span id="a_bfd_t">–</span></div>
+            <div class="bar"><span id="a_bfd_b" style="width:0%; background:var(--ok);"></span></div>
+        </div>
+    </div>
+
+    <div class="card" id="alarms_card" style="margin-bottom:2rem; display:none;">
+        <h2>🔔 Alarmes Ativos</h2>
+        <table>
+            <thead><tr><th>Roteador</th><th>Tipo</th><th>Vizinho / Sessão</th><th>Status</th></tr></thead>
+            <tbody id="alarms_body"></tbody>
+        </table>
+    </div>
+
+    <h2 style="font-weight:600; margin-bottom:1rem;">📍 Por Roteador (PE)</h2>
+    <div id="pes"><div class="muted">carregando…</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => (s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+
+  function badge(state){
+    const s = (state||'').toLowerCase();
+    if (s === 'full' || s === 'up') return '<span class="badge b-ok">✅ ' + esc(state) + '</span>';
+    if (s === 'offline')            return '<span class="badge b-off">🔌 OFFLINE</span>';
+    if (s.indexOf('admin') >= 0)    return '<span class="badge b-warn">⚠️ ' + esc(state) + '</span>';
+    return '<span class="badge b-down">❌ ' + esc(state || 'down') + '</span>';
+  }
+  function availColor(p){ return p >= 99 ? 'var(--ok)' : (p >= 90 ? '#fb923c' : 'var(--danger)'); }
+  function setBar(barId, txtId, p){
+    p = (p == null) ? 0 : p;
+    $(barId).style.width = p + '%';
+    $(barId).style.background = availColor(p);
+    $(txtId).textContent = p + '%';
+  }
+  function countBadge(label, up, total){
+    const cls = (total > 0 && up === total) ? 'b-ok' : (up === 0 && total > 0 ? 'b-down' : 'b-warn');
+    return `<span class="badge ${cls}">${label} ${up}/${total}</span>`;
+  }
+  const byIp = (a,b) => String(a.vizinho).localeCompare(String(b.vizinho));
+
+  async function j(p){ const r = await fetch(p, {cache:'no-store'}); return r.json(); }
+
+  async function load(){
+    try {
+      const [sum, routers, ospf, bfd, alarms] = await Promise.all(
+        ['/api/summary','/api/routers','/api/ospf','/api/bfd','/api/alarms'].map(j)
+      );
+      const s = (sum && sum[0]) || {};
+      $('c_pes').textContent = s.pes ?? 0;
+      $('c_ou').textContent  = s.ospf_up ?? 0;
+      $('c_od').textContent  = s.ospf_down ?? 0;
+      $('c_bu').textContent  = s.bfd_up ?? 0;
+      $('c_bd').textContent  = s.bfd_down ?? 0;
+      $('c_od').className = 'v ' + ((s.ospf_down > 0) ? 'v-bad' : 'v-ok');
+      $('c_bd').className = 'v ' + ((s.bfd_down > 0) ? 'v-bad' : 'v-ok');
+      setBar('a_ospf_b','a_ospf_t', s.ospf_avail);
+      setBar('a_bfd_b','a_bfd_t', s.bfd_avail);
+
+      // alarmes (global)
+      if (alarms.length){
+        $('alarms_card').style.display = '';
+        $('alarms_body').innerHTML = alarms.map(a =>
+          `<tr><td><strong>${esc(a.router)}</strong></td><td><span class="pill pill-${(a.tipo||'').toLowerCase()}">${esc(a.tipo)}</span></td><td>${esc(a.alvo)}</td><td>${badge(a.state)}</td></tr>`
+        ).join('');
+      } else {
+        $('alarms_card').style.display = 'none';
+      }
+
+      // agrupa por PE (respeita ignorar/esquecer/renomear, pois vem da mesma API)
+      const grp = {};
+      const ensure = r => (grp[r] || (grp[r] = { ospf: [], bfd: [] }));
+      routers.forEach(r => ensure(r.router));
+      ospf.forEach(o => ensure(o.router).ospf.push(o));
+      bfd.forEach(b => ensure(b.router).bfd.push(b));
+
+      const nomes = Object.keys(grp).sort((a,b) => a.localeCompare(b));
+      $('pes').innerHTML = nomes.map(name => {
+        const g = grp[name];
+        g.ospf.sort(byIp); g.bfd.sort(byIp);
+        const ou = g.ospf.filter(x => x.up).length, bt = g.bfd.length, bu = g.bfd.filter(x => x.up).length;
+        const ospfRows = g.ospf.length ? g.ospf.map(o =>
+          `<tr><td>${esc(o.vizinho)}</td><td>${badge(o.state)}</td></tr>`).join('')
+          : '<tr><td colspan="2" class="muted">— sem vizinhos —</td></tr>';
+        const bfdRows = g.bfd.length ? g.bfd.map(b =>
+          `<tr><td>${esc(b.vizinho)}</td><td class="muted">${esc(b.interface)}</td><td>${badge(b.state)}</td></tr>`).join('')
+          : '<tr><td colspan="3" class="muted">— sem sessões —</td></tr>';
+        return `
+        <div class="card pe-card">
+          <div class="pe-head">
+            <span class="name">📍 ${esc(name)}</span>
+            <span class="sub">${countBadge('OSPF', ou, g.ospf.length)} ${countBadge('BFD', bu, bt)}</span>
+          </div>
+          <div class="pe-cols">
+            <div>
+              <h3>🌐 Vizinhos OSPF</h3>
+              <table><thead><tr><th>Vizinho</th><th>Status</th></tr></thead><tbody>${ospfRows}</tbody></table>
+            </div>
+            <div>
+              <h3>⚡ Sessões BFD</h3>
+              <table><thead><tr><th>Vizinho</th><th>Interface</th><th>Status</th></tr></thead><tbody>${bfdRows}</tbody></table>
+            </div>
+          </div>
+        </div>`;
+      }).join('') || '<div class="muted">Nenhum PE cadastrado.</div>';
+
+      $('updated').textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR');
+    } catch (e) {
+      $('updated').textContent = 'erro ao carregar: ' + e.message;
+    }
+  }
+  load();
+  setInterval(load, 10000);
+</script>
+{% endblock %}

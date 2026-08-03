@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+{% block title %}Roteadores - Telemetry Portal{% endblock %}
+{% block content %}
+    <div class="grid">
+        <div class="card">
+            <h2>Adicionar PE (Router)</h2>
+            <form action="{{ url_for('add_router') }}" method="POST">
+                <div class="input-group">
+                    <label>Nome (Identificação no Grafana)</label>
+                    <input type="text" name="name" required placeholder="Ex: PE-Core-01">
+                </div>
+                <div class="input-group">
+                    <label>Endereço IP</label>
+                    <input type="text" name="ip" required placeholder="Ex: 10.0.0.1">
+                </div>
+                <div class="input-group">
+                    <label>Porta da API</label>
+                    <input type="number" name="port" required value="8728">
+                </div>
+                <div class="input-group">
+                    <label>Usuário API</label>
+                    <input type="text" name="username" required value="telemetria">
+                </div>
+                <div class="input-group">
+                    <label>Senha API</label>
+                    <input type="password" name="password" required>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Salvar Roteador</button>
+            </form>
+            <p style="color: var(--text-muted); margin-top: 1rem; font-size: .85rem;">
+                A versão do RouterOS (v6/v7) é detectada automaticamente — não precisa marcar nada.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>Roteadores Cadastrados</h2>
+            <table>
+                <thead>
+                    <tr><th>Nome</th><th>IP</th><th>Porta</th><th>Usuário</th><th>Ações</th></tr>
+                </thead>
+                <tbody>
+                    {% for r in routers %}
+                    <tr>
+                        <td><strong>{{ r[1] }}</strong></td>
+                        <td>{{ r[2] }}</td>
+                        <td>{{ r[3] }}</td>
+                        <td>{{ r[4] }}</td>
+                        <td>
+                            <a href="{{ url_for('delete_router', id=r[0]) }}" class="btn btn-danger"
+                               style="padding: 0.4rem 0.8rem; font-size: 0.8rem;"
+                               onclick="return confirm('Remover o PE {{ r[1] }}?');">Remover</a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum roteador cadastrado.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 2rem;">
+        <h2>🔎 Vizinhos Descobertos (OSPF / BFD)</h2>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
+            Descobertos automaticamente. Dê um <strong>nome amigável</strong> (aparece no Grafana e na aba Gráficos).
+            Quando um vizinho <strong>some</strong> do roteador, ele fica <span class="status-off">offline</span>.
+            <strong>Ignorar</strong> = some dos gráficos mas continua aqui. <strong>Esquecer</strong> = remove de vez.
+        </p>
+        <table>
+            <thead>
+                <tr><th>Roteador</th><th>Tipo</th><th>IP</th><th>Status</th><th>Nome amigável</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+                {% for n in neighbors %}
+                <tr style="{% if n.ignored %}opacity:.55;{% endif %}">
+                    <td><strong>{{ n.router }}</strong></td>
+                    <td><span class="pill pill-{{ n.type }}">{{ n.type|upper }}</span></td>
+                    <td>{{ n.ip }}</td>
+                    <td>
+                        {% if n.up %}<span class="status-on">● online</span>
+                        {% else %}<span class="status-off">● {{ n.state }}</span>{% endif %}
+                        {% if n.ignored %}<br><span class="pill pill-ignored">🙈 oculto</span>{% endif %}
+                    </td>
+                    <td>
+                        <form class="name-form" action="{{ url_for('neighbor_rename') }}" method="POST">
+                            <input type="hidden" name="router_id" value="{{ n.router_id }}">
+                            <input type="hidden" name="ip" value="{{ n.ip }}">
+                            <input type="text" name="name" value="{{ n.name }}" placeholder="ex: PE-Core-01">
+                            <button type="submit" class="btn" style="padding: 0.45rem 0.9rem; font-size: 0.8rem;">Salvar</button>
+                        </form>
+                    </td>
+                    <td style="white-space: nowrap;">
+                        <a href="{{ url_for('neighbor_ignore', router_id=n.router_id, ip=n.ip) }}"
+                           class="btn" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; {% if not n.ignored %}background:#64748b;{% else %}background:#0ea5e9;{% endif %}">
+                            {% if n.ignored %}Mostrar{% else %}Ignorar{% endif %}
+                        </a>
+                        <a href="{{ url_for('neighbor_forget', router_id=n.router_id, ip=n.ip) }}"
+                           class="btn btn-danger" style="padding: 0.45rem 0.9rem; font-size: 0.8rem;"
+                           onclick="return confirm('Esquecer {{ n.ip }}? Deixa de ser monitorado e o alarme some.');">Esquecer</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">
+                    Nenhum vizinho descoberto ainda. Aguarde o primeiro ciclo de coleta (abra a aba Gráficos).
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

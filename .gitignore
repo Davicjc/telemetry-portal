@@ -1,0 +1,18 @@
+# Banco de dados (criado no primeiro run — contém usuários, roteadores e senhas de API)
+telemetry.db
+telemetry.db-journal
+
+# Chave de sessão (gerada automaticamente no primeiro run)
+secret.key
+
+# Ambiente Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Editores / SO
+.vscode/
+.idea/
+*.swp
+.DS_Store

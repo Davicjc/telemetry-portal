@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Usuários - Telemetry Portal{% endblock %}
+{% block content %}
+    <div class="grid">
+        <div class="card">
+            <h2>🔑 Trocar minha senha</h2>
+            <form action="{{ url_for('account_password') }}" method="POST">
+                <div class="input-group">
+                    <label>Senha atual</label>
+                    <input type="password" name="current_password" required>
+                </div>
+                <div class="input-group">
+                    <label>Nova senha</label>
+                    <input type="password" name="new_password" required>
+                </div>
+                <button type="submit" class="btn" style="width: 100%;">Alterar senha</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>👥 Usuários de login</h2>
+            <form action="{{ url_for('user_add') }}" method="POST" style="display:flex; gap:.75rem; align-items:flex-end; margin-bottom:1.5rem; flex-wrap:wrap;">
+                <div class="input-group" style="margin:0; flex:1; min-width:140px;">
+                    <label>Novo usuário</label>
+                    <input type="text" name="username" required placeholder="ex: joao">
+                </div>
+                <div class="input-group" style="margin:0; flex:1; min-width:140px;">
+                    <label>Senha</label>
+                    <input type="password" name="password" required>
+                </div>
+                <button type="submit" class="btn">Adicionar</button>
+            </form>
+            <table>
+                <thead><tr><th>Usuário</th><th style="text-align:right;">Ações</th></tr></thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td>👤 {{ u[1] }}{% if u[1] == current_user.username %} <span style="color:var(--text-muted);">(você)</span>{% endif %}</td>
+                        <td style="text-align:right;">
+                            {% if u[1] != current_user.username %}
+                            <a href="{{ url_for('user_delete', id=u[0]) }}" class="btn btn-danger"
+                               style="padding:.4rem .8rem; font-size:.8rem;"
+                               onclick="return confirm('Apagar o usuário {{ u[1] }}? Ele perde o acesso ao portal.');">Remover</a>
+                            {% else %}
+                            <span style="color: var(--text-muted); font-size:.85rem;">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2" style="color: var(--text-muted);">Nenhum usuário.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <p style="color: var(--text-muted); margin-top: 1rem; font-size: .85rem;">
+                Você não pode apagar o próprio usuário nem o último restante (evita travar o acesso).
+            </p>
+        </div>
+    </div>
+{% endblock %}
