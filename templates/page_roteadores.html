@@ -68,7 +68,7 @@
         </p>
         <table>
             <thead>
-                <tr><th>Roteador</th><th>Tipo</th><th>IP</th><th>Status</th><th>Nome amigável</th><th>Ações</th></tr>
+                <tr><th>Roteador</th><th>Tipo</th><th>IP</th><th>Status</th><th>Desde</th><th>Nome amigável</th><th>Ações</th></tr>
             </thead>
             <tbody>
                 {% for n in neighbors %}
@@ -80,6 +80,9 @@
                         {% if n.up %}<span class="status-on">● online</span>
                         {% else %}<span class="status-off">● {{ n.state }}</span>{% endif %}
                         {% if n.ignored %}<br><span class="pill pill-ignored">🙈 oculto</span>{% endif %}
+                    </td>
+                    <td style="color: var(--text-muted); white-space: nowrap;" title="Há quanto tempo neste estado">
+                        {% if n.up %}🟢{% else %}🔴{% endif %} {{ n.since_txt }}
                     </td>
                     <td>
                         <form class="name-form" action="{{ url_for('neighbor_rename') }}" method="POST">
@@ -100,7 +103,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="6" style="text-align: center; color: var(--text-muted);">
+                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">
                     Nenhum vizinho descoberto ainda. Aguarde o primeiro ciclo de coleta (abra a aba Gráficos).
                 </td></tr>
                 {% endfor %}

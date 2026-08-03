@@ -12,6 +12,8 @@ Feito para rodar numa VM Debian/Ubuntu e ser usado por qualquer empresa/provedor
 - 🔎 **Detecção automática de OFFLINE** — no MikroTik, quando um vizinho cai ele simplesmente *some*. O portal **lembra** cada vizinho já visto e marca como `OFFLINE` quando ele desaparece (com proteção contra falso-positivo se o PE inteiro ficar inacessível).
 - 🏷️ **Nomes amigáveis** — troque o IP do vizinho por um nome (ex.: `PE-Core-SP`).
 - 🙈 **Ignorar / Esquecer** — *ignorar* tira do painel mas mantém no registro; *esquecer* remove de vez.
+- 📨 **Alertas no Telegram** — avisa no seu grupo **assim que** um vizinho cai e **quando volta** (com horário e há quanto tempo ficou fora). Inteligente: notifica **uma única vez** por transição (não a cada consulta). A coleta roda em segundo plano a cada 30s, então alerta mesmo com ninguém olhando. Guia de configuração do zero embutido na própria aba.
+- ⏱️ **Tempo em cada estado** — o portal guarda desde quando cada vizinho está `online`/`offline` e mostra na tela, além do histórico de quedas e retornos.
 - 🔀 **Auto-detecção de RouterOS v6 e v7** — o BFD é consultado por caminhos diferentes em cada versão; o portal descobre sozinho (sem checkbox).
 - 👥 **Multiusuário** — login, criar/remover usuários, trocar a própria senha.
 - 📜 **Log de auditoria** — registra quem adicionou/removeu/renomeou/ignorou cada coisa. Somente leitura (não pode ser apagado).
@@ -64,12 +66,26 @@ Depois, no portal (aba **Roteadores**), clique em adicionar e informe: **Nome**,
 
 ---
 
+## 📨 Alertas no Telegram
+
+Na aba **Telegram** você recebe um aviso no seu grupo sempre que algo cai e quando volta. O passo a passo completo está dentro da própria aba, mas em resumo:
+
+1. Crie um bot com o **@BotFather** (`/newbot`) e copie o **token**.
+2. Crie um grupo, adicione o bot e envie qualquer mensagem nele.
+3. Descubra o **Chat ID** abrindo `https://api.telegram.org/botSEU_TOKEN/getUpdates` (procure `"chat":{"id":-100...}`).
+4. Cole **token** e **chat_id** na aba, marque **Ativar**, salve e clique em **Enviar mensagem de teste**.
+
+O alerta é enviado **uma vez** na queda e **uma vez** no retorno (com horário e duração). A verificação roda sozinha a cada 30s.
+
+---
+
 ## 🖥️ As abas do portal
 
 | Aba | O que faz |
 |-----|-----------|
 | **📊 Gráficos** | Painel de status ao vivo, separado por PE. Auto-refresh a cada 10s. |
-| **🖥️ Roteadores** | Cadastrar PEs e gerenciar vizinhos (nomear / ignorar / esquecer). |
+| **🖥️ Roteadores** | Cadastrar PEs e gerenciar vizinhos (nomear / ignorar / esquecer) e ver desde quando cada um está no estado atual. |
+| **📨 Telegram** | Configurar o bot e o grupo de alertas, testar o envio, e ver o histórico de quedas/retornos. Traz um passo a passo completo de como criar o bot. |
 | **👥 Usuários** | Trocar a própria senha, criar e remover usuários. |
 | **📜 Logs** | Histórico de auditoria (somente leitura). |
 

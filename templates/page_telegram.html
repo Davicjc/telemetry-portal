@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Telegram - Telemetry Portal{% endblock %}
+
+{% block extra_css %}
+    .tg-status { display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .9rem;
+        border-radius:999px; font-size:.85rem; font-weight:600; }
+    .tg-on  { background: rgba(52,211,153,.15); color: var(--ok); border:1px solid rgba(52,211,153,.35); }
+    .tg-off { background: rgba(148,163,184,.15); color: var(--text-muted); border:1px solid var(--glass-border); }
+    .switch { display:flex; align-items:center; gap:.7rem; margin: .5rem 0 1.2rem; }
+    .switch input { width:18px; height:18px; accent-color: var(--primary); }
+    .guide { counter-reset: step; }
+    .guide .step {
+        position: relative; padding: 1rem 1rem 1rem 3.2rem; margin-bottom: .8rem;
+        background: rgba(0,0,0,.18); border:1px solid var(--glass-border); border-radius:.7rem;
+    }
+    .guide .step::before {
+        counter-increment: step; content: counter(step);
+        position:absolute; left:.9rem; top:1rem; width:1.7rem; height:1.7rem;
+        display:flex; align-items:center; justify-content:center;
+        background: var(--primary); color:#fff; border-radius:50%; font-weight:700; font-size:.9rem;
+    }
+    .guide .step b { color: var(--text-main); }
+    .guide code, .inline-code {
+        background: rgba(0,0,0,.35); padding:.15rem .45rem; border-radius:.35rem;
+        font-family: ui-monospace, monospace; color:#93c5fd; font-size:.9rem;
+    }
+    .ev-up   { color: var(--ok); font-weight:600; }
+    .ev-down { color: var(--danger); font-weight:600; }
+{% endblock %}
+
+{% block content %}
+    <div class="grid">
+        <div class="card">
+            <h2>📨 Configuração do Bot</h2>
+            <div style="margin-bottom:1.2rem;">
+                {% if cfg.enabled %}
+                    <span class="tg-status tg-on">● Alertas ativos</span>
+                {% else %}
+                    <span class="tg-status tg-off">● Alertas desativados</span>
+                {% endif %}
+            </div>
+
+            <form action="{{ url_for('telegram_save') }}" method="POST">
+                <div class="switch">
+                    <input type="checkbox" id="enabled" name="enabled" {% if cfg.enabled %}checked{% endif %}>
+                    <label for="enabled" style="margin:0; color: var(--text-main);">Enviar alertas para o Telegram</label>
+                </div>
+                <div class="input-group">
+                    <label>Token do Bot</label>
+                    <input type="text" name="token" value="{{ cfg.token }}"
+                           placeholder="Ex: 8123456789:AAH...abcDEF" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <label>Chat ID (grupo ou usuário)</label>
+                    <input type="text" name="chat_id" value="{{ cfg.chat_id }}"
+                           placeholder="Ex: -1002345678901" autocomplete="off">
+                </div>
+                <button type="submit" class="btn" style="width:100%;">Salvar configuração</button>
+            </form>
+
+            <form action="{{ url_for('telegram_test') }}" method="POST" style="margin-top:.8rem;">
+                <button type="submit" class="btn" style="width:100%; background:#64748b;">
+                    Enviar mensagem de teste
+                </button>
+            </form>
+
+            <p style="color: var(--text-muted); margin-top:1rem; font-size:.85rem;">
+                O sistema avisa <b>uma única vez</b> quando um vizinho cai e outra vez quando volta
+                (com o horário e há quanto tempo ficou fora). Não há spam a cada consulta.
+                A coleta roda sozinha a cada 30s.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>📖 Como configurar do zero</h2>
+            <div class="guide">
+                <div class="step">
+                    <b>Crie o bot no BotFather.</b><br>
+                    No Telegram, procure por <span class="inline-code">@BotFather</span>, abra a conversa e envie
+                    <span class="inline-code">/newbot</span>. Escolha um nome e um usuário (que termine em
+                    <span class="inline-code">bot</span>). Ele responde com um <b>token</b> parecido com
+                    <span class="inline-code">8123456789:AAH...</span>. Copie e cole no campo <b>Token do Bot</b> ao lado.
+                </div>
+                <div class="step">
+                    <b>Crie o grupo (ou use um existente).</b><br>
+                    Crie um grupo no Telegram para receber os alertas e
+                    <b>adicione o seu bot</b> como membro do grupo.
+                </div>
+                <div class="step">
+                    <b>Deixe o bot ver as mensagens.</b><br>
+                    Envie qualquer mensagem no grupo (ex.: <span class="inline-code">oi</span>). Se quiser garantir
+                    que ele leia tudo, no BotFather use <span class="inline-code">/setprivacy</span> →
+                    escolha o bot → <span class="inline-code">Disable</span>.
+                </div>
+                <div class="step">
+                    <b>Descubra o Chat ID do grupo.</b><br>
+                    No navegador, abra (troque <span class="inline-code">SEU_TOKEN</span> pelo token):<br>
+                    <code>https://api.telegram.org/botSEU_TOKEN/getUpdates</code><br>
+                    Procure por <span class="inline-code">"chat":{"id":-100...}</span>. Esse número
+                    (normalmente negativo, começando com <span class="inline-code">-100</span>) é o
+                    <b>Chat ID</b>. Cole no campo ao lado.
+                </div>
+                <div class="step">
+                    <b>Ative e teste.</b><br>
+                    Marque <b>“Enviar alertas para o Telegram”</b>, clique em <b>Salvar</b> e depois em
+                    <b>Enviar mensagem de teste</b>. Se chegar no grupo, está tudo pronto. ✅
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top:2rem;">
+        <h2>🔔 Histórico de eventos (quedas &amp; retornos)</h2>
+        <p style="color: var(--text-muted); margin-bottom:1.5rem;">
+            Cada linha é uma transição real de estado — a mesma que gera o aviso no Telegram.
+            Mostrando os 100 mais recentes.
+        </p>
+        <table>
+            <thead>
+                <tr><th>Data / Hora</th><th>Evento</th><th>Roteador</th><th>Tipo</th><th>Alvo</th><th>Tempo no estado anterior</th></tr>
+            </thead>
+            <tbody>
+                {% for e in eventos %}
+                <tr>
+                    <td style="white-space:nowrap; color: var(--text-muted);">{{ e.quando }}</td>
+                    <td>
+                        {% if e.up %}<span class="ev-up">🟢 Restabelecido</span>
+                        {% else %}<span class="ev-down">🔴 Queda ({{ e.state }})</span>{% endif %}
+                    </td>
+                    <td><strong>{{ e.router }}</strong></td>
+                    <td><span class="pill pill-{{ e.type }}">{{ e.type|upper }}</span></td>
+                    <td>{{ e.alvo }}</td>
+                    <td style="color: var(--text-muted);">{{ e.duracao }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="6" style="text-align:center; color: var(--text-muted);">
+                    Nenhum evento ainda. Assim que houver uma queda ou retorno, aparece aqui.
+                </td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endblock %}

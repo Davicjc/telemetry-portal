@@ -102,6 +102,7 @@
     <nav class="tabs">
         <a href="{{ url_for('graficos') }}"   class="tab {% if active=='graficos' %}active{% endif %}">📊 Gráficos</a>
         <a href="{{ url_for('index') }}"      class="tab {% if active=='roteadores' %}active{% endif %}">🖥️ Roteadores</a>
+        <a href="{{ url_for('telegram') }}"   class="tab {% if active=='telegram' %}active{% endif %}">📨 Telegram</a>
         <a href="{{ url_for('usuarios') }}"   class="tab {% if active=='usuarios' %}active{% endif %}">👥 Usuários</a>
         <a href="{{ url_for('logs') }}"       class="tab {% if active=='logs' %}active{% endif %}">📜 Logs</a>
     </nav>

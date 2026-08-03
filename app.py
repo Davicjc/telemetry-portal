@@ -1,6 +1,9 @@
 import os
 import sqlite3
 import time
+import threading
+import urllib.request
+import urllib.parse
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -54,6 +57,18 @@ def init_db():
     # Log de auditoria (append-only: nao ha rota para apagar)
     c.execute('''CREATE TABLE IF NOT EXISTS audit_log (
         id INTEGER PRIMARY KEY, ts TEXT, user TEXT, action TEXT, details TEXT)''')
+    # Configuracoes simples (chave/valor) - usado pelo Telegram
+    c.execute('''CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY, value TEXT)''')
+    # Historico de eventos de estado (queda / restabelecimento)
+    c.execute('''CREATE TABLE IF NOT EXISTS state_events (
+        id INTEGER PRIMARY KEY, ts REAL, router TEXT, type TEXT, ip TEXT,
+        name TEXT, new_state TEXT, up INTEGER, duration REAL)''')
+
+    # Migracao: coluna 'since' (desde quando o vizinho esta no estado atual)
+    cols = [row[1] for row in c.execute("PRAGMA table_info(neighbor_seen)").fetchall()]
+    if 'since' not in cols:
+        c.execute("ALTER TABLE neighbor_seen ADD COLUMN since REAL")
 
     # Create default admin if not exists
     c.execute("SELECT * FROM users WHERE username='admin'")
@@ -100,6 +115,105 @@ def log_action(action, details=''):
     conn.close()
 
 
+# --- CONFIGURACOES (settings) ---
+
+def get_setting(key, default=''):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    row = c.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+    conn.close()
+    return row[0] if row else default
+
+
+def set_setting(key, value):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT INTO settings (key, value) VALUES (?, ?) "
+              "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
+    conn.commit()
+    conn.close()
+
+
+# --- TELEGRAM ---
+
+def _fmt_duration(seconds):
+    """Formata segundos em algo legivel: 45s, 3m 20s, 2h 5m, 1d 3h."""
+    seconds = int(seconds or 0)
+    if seconds < 60:
+        return f"{seconds}s"
+    m, s = divmod(seconds, 60)
+    if m < 60:
+        return f"{m}m {s}s"
+    h, m = divmod(m, 60)
+    if h < 24:
+        return f"{h}h {m}m"
+    d, h = divmod(h, 24)
+    return f"{d}d {h}h"
+
+
+def _tg_post(token, chat_id, text):
+    """Envia uma mensagem via API do Telegram. Lanca excecao em falha."""
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }).encode()
+    req = urllib.request.Request(url, data=payload)
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return resp.read().decode("utf-8", "ignore")
+
+
+def send_telegram(text):
+    """Envia usando a config salva. Silencioso: nunca derruba o coletor."""
+    if get_setting('telegram_enabled', '0') != '1':
+        return
+    token = get_setting('telegram_token', '').strip()
+    chat_id = get_setting('telegram_chat_id', '').strip()
+    if not token or not chat_id:
+        return
+    try:
+        _tg_post(token, chat_id, text)
+    except Exception:
+        pass
+
+
+def _tg_send_async(text):
+    """Dispara o envio em thread separada para nao travar a coleta/UI."""
+    threading.Thread(target=send_telegram, args=(text,), daemon=True).start()
+
+
+def _format_event(ev):
+    """Monta a mensagem de queda/restabelecimento para o Telegram."""
+    tipo = ev["type"].upper()
+    quando = datetime.fromtimestamp(ev["ts"]).strftime('%d/%m/%Y %H:%M:%S')
+    alvo = ev["label"]
+    ip = ev["ip"]
+    router = ev["router"]
+    if ev["up"]:
+        linhas = [
+            f"🟢 <b>RESTABELECIDO</b> — {tipo}",
+            f"PE: <b>{router}</b>",
+            f"Alvo: {alvo} ({ip})",
+            f"Quando: {quando}",
+        ]
+        if ev.get("duration"):
+            linhas.append(f"Ficou fora por: {_fmt_duration(ev['duration'])}")
+    else:
+        estado = ev.get("state") or "down"
+        linhas = [
+            f"🔴 <b>QUEDA</b> — {tipo}",
+            f"PE: <b>{router}</b>",
+            f"Alvo: {alvo} ({ip})",
+            f"Estado: {estado}",
+            f"Quando: {quando}",
+        ]
+        if ev.get("duration"):
+            linhas.append(f"Estava estável há: {_fmt_duration(ev['duration'])}")
+    return "\n".join(linhas)
+
+
 # --- WEB UI ROUTES ---
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -136,14 +250,16 @@ def get_neighbors_for_ui():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''SELECT s.router_id, r.name, s.type, s.ip, COALESCE(n.name, ''), s.last_state, s.up,
-                        CASE WHEN g.ip IS NOT NULL THEN 1 ELSE 0 END
+                        CASE WHEN g.ip IS NOT NULL THEN 1 ELSE 0 END, s.since
                  FROM neighbor_seen s
                  JOIN routers r ON r.id = s.router_id
                  LEFT JOIN neighbor_names n ON n.router_id = s.router_id AND n.ip = s.ip
                  LEFT JOIN neighbor_ignored g ON g.router_id = s.router_id AND g.ip = s.ip
                  ORDER BY r.name, s.type, s.ip''')
-    rows = [{"router_id": a, "router": b, "type": t, "ip": ip, "name": nm, "state": st, "up": up, "ignored": ig}
-            for (a, b, t, ip, nm, st, up, ig) in c.fetchall()]
+    now = time.time()
+    rows = [{"router_id": a, "router": b, "type": t, "ip": ip, "name": nm, "state": st, "up": up, "ignored": ig,
+             "since_txt": _fmt_duration(now - since) if since else "—"}
+            for (a, b, t, ip, nm, st, up, ig, since) in c.fetchall()]
     conn.close()
     return rows
 
@@ -186,6 +302,69 @@ def logs():
     rows = c.fetchall()
     conn.close()
     return render_template('page_logs.html', active='logs', logs=rows)
+
+
+@app.route('/telegram')
+@login_required
+def telegram():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT ts, router, type, ip, name, new_state, up, duration "
+              "FROM state_events ORDER BY id DESC LIMIT 100")
+    rows = c.fetchall()
+    conn.close()
+    eventos = []
+    for (ts, router, typ, ip, name, new_state, up, dur) in rows:
+        eventos.append({
+            "quando": datetime.fromtimestamp(ts).strftime('%d/%m/%Y %H:%M:%S'),
+            "router": router, "type": typ, "ip": ip,
+            "alvo": name if name else ip,
+            "state": new_state, "up": up,
+            "duracao": _fmt_duration(dur) if dur else "—",
+        })
+    cfg = {
+        "enabled": get_setting('telegram_enabled', '0') == '1',
+        "token": get_setting('telegram_token', ''),
+        "chat_id": get_setting('telegram_chat_id', ''),
+    }
+    return render_template('page_telegram.html', active='telegram', cfg=cfg, eventos=eventos)
+
+
+@app.route('/telegram/save', methods=['POST'])
+@login_required
+def telegram_save():
+    token = request.form.get('token', '').strip()
+    chat_id = request.form.get('chat_id', '').strip()
+    enabled = '1' if request.form.get('enabled') else '0'
+    set_setting('telegram_token', token)
+    set_setting('telegram_chat_id', chat_id)
+    set_setting('telegram_enabled', enabled)
+    log_action('Salvou config do Telegram',
+               f'ativo={enabled}, chat_id={chat_id or "(vazio)"}')
+    flash('Configuração do Telegram salva.')
+    return redirect(url_for('telegram'))
+
+
+@app.route('/telegram/test', methods=['POST'])
+@login_required
+def telegram_test():
+    token = get_setting('telegram_token', '').strip()
+    chat_id = get_setting('telegram_chat_id', '').strip()
+    if not token or not chat_id:
+        flash('Preencha e salve o token e o chat_id antes de testar.')
+        return redirect(url_for('telegram'))
+    quando = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    msg = ("✅ <b>Telemetry Portal</b>\n"
+           "Mensagem de teste — o bot está conectado a este grupo.\n"
+           f"Enviado em: {quando}")
+    try:
+        _tg_post(token, chat_id, msg)
+        log_action('Testou o Telegram', 'sucesso')
+        flash('Mensagem de teste enviada! Confira o grupo no Telegram.')
+    except Exception as e:
+        log_action('Testou o Telegram', f'falha: {e}')
+        flash(f'Falha ao enviar: {e}')
+    return redirect(url_for('telegram'))
 
 
 @app.route('/router/add', methods=['POST'])
@@ -444,71 +623,136 @@ def fetch_router_data(router):
     return data
 
 
+_merge_lock = threading.Lock()
+
+
 def _merge_registry(results):
     """Aplica nomes amigaveis, separa IP/interface do BFD e injeta vizinhos
-    que sumiram (offline). Persiste tudo que foi visto para deteccao futura."""
+    que sumiram (offline). Persiste tudo que foi visto para deteccao futura.
+
+    Detecta TRANSICOES de estado (borda): um vizinho so gera evento quando
+    realmente muda up<->down. Retorna a lista de eventos para notificacao.
+    """
     now = time.time()
-    conn = sqlite3.connect(DB_FILE)
-    c = conn.cursor()
+    events = []
+    with _merge_lock:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
 
-    for r in results:
-        rid = r.get("_id")
-        c.execute("SELECT ip, name FROM neighbor_names WHERE router_id=?", (rid,))
-        names = {row[0]: row[1] for row in c.fetchall()}
-        c.execute("SELECT ip FROM neighbor_ignored WHERE router_id=?", (rid,))
-        ignored = set(row[0] for row in c.fetchall())
+        for r in results:
+            rid = r.get("_id")
+            rname = r.get("router", "")
+            c.execute("SELECT ip, name FROM neighbor_names WHERE router_id=?", (rid,))
+            names = {row[0]: row[1] for row in c.fetchall()}
+            c.execute("SELECT ip FROM neighbor_ignored WHERE router_id=?", (rid,))
+            ignored = set(row[0] for row in c.fetchall())
 
-        for typ in ("ospf", "bfd"):
-            entries = r.get(typ, [])
+            for typ in ("ospf", "bfd"):
+                entries = r.get(typ, [])
 
-            # normaliza os presentes
-            for e in entries:
-                ip = _clean_ip(e.get("remote_ip", ""))
-                nm = names.get(ip, "")
-                e["ip"] = ip
-                e["name"] = nm
-                e["label"] = nm if nm else ip
-                e["offline"] = False
-                e["ignored"] = ip in ignored
-                if typ == "bfd":
-                    rem = e.get("remote_ip", "") or ""
-                    e["vizinho"] = ip
-                    e["interface"] = rem.split("%", 1)[1] if "%" in rem else ""
+                # normaliza os presentes
+                for e in entries:
+                    ip = _clean_ip(e.get("remote_ip", ""))
+                    nm = names.get(ip, "")
+                    e["ip"] = ip
+                    e["name"] = nm
+                    e["label"] = nm if nm else ip
+                    e["offline"] = False
+                    e["ignored"] = ip in ignored
+                    if typ == "bfd":
+                        rem = e.get("remote_ip", "") or ""
+                        e["vizinho"] = ip
+                        e["interface"] = rem.split("%", 1)[1] if "%" in rem else ""
 
-            # se o PE falhou na coleta, NAO mexe no registro (evita falso offline)
-            if r.get("error"):
-                continue
+                # se o PE falhou na coleta, NAO mexe no registro (evita falso offline)
+                if r.get("error"):
+                    continue
 
-            current_ips = set(e["ip"] for e in entries)
+                current_ips = set(e["ip"] for e in entries)
 
-            # registra os presentes
-            for e in entries:
-                c.execute(
-                    "INSERT INTO neighbor_seen (router_id, type, ip, last_seen, last_state, up) "
-                    "VALUES (?, ?, ?, ?, ?, ?) "
-                    "ON CONFLICT(router_id, type, ip) DO UPDATE SET "
-                    "last_seen=excluded.last_seen, last_state=excluded.last_state, up=excluded.up",
-                    (rid, typ, e["ip"], now, e.get("state", ""), e.get("up", 0)),
-                )
+                # estado anterior de todos os conhecidos deste tipo
+                c.execute("SELECT ip, up, since FROM neighbor_seen WHERE router_id=? AND type=?", (rid, typ))
+                prev = {row[0]: (row[1], row[2]) for row in c.fetchall()}
 
-            # descobre os que sumiram -> offline
-            c.execute("SELECT ip FROM neighbor_seen WHERE router_id=? AND type=?", (rid, typ))
-            known = set(row[0] for row in c.fetchall())
-            for ip in known - current_ips:
-                c.execute(
-                    "UPDATE neighbor_seen SET last_state='offline', up=0 WHERE router_id=? AND type=? AND ip=?",
-                    (rid, typ, ip),
-                )
-                nm = names.get(ip, "")
-                off = {"remote_ip": ip, "ip": ip, "state": "offline", "up": 0,
-                       "name": nm, "label": nm if nm else ip, "offline": True,
-                       "ignored": ip in ignored}
-                if typ == "bfd":
-                    off.update({"local_ip": "", "vizinho": ip, "interface": ""})
-                entries.append(off)
+                # registra os presentes + detecta transicao
+                for e in entries:
+                    ip = e["ip"]
+                    new_up = e.get("up", 0)
+                    new_state = e.get("state", "")
+                    old = prev.get(ip)
+                    if old is None:
+                        # primeira vez que vemos: registra sem notificar
+                        since = now
+                    else:
+                        old_up, old_since = old
+                        old_since = old_since or now
+                        if (old_up or 0) != new_up:
+                            # TRANSICAO (borda) -> gera evento
+                            events.append(_mk_event(now, rname, typ, ip, names.get(ip, ""),
+                                                    new_up, new_state, old_since))
+                            since = now
+                        else:
+                            since = old_since  # mantem desde quando esta assim
 
-    conn.commit()
-    conn.close()
+                    c.execute(
+                        "INSERT INTO neighbor_seen (router_id, type, ip, last_seen, last_state, up, since) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                        "ON CONFLICT(router_id, type, ip) DO UPDATE SET "
+                        "last_seen=excluded.last_seen, last_state=excluded.last_state, "
+                        "up=excluded.up, since=excluded.since",
+                        (rid, typ, ip, now, new_state, new_up, since),
+                    )
+
+                # descobre os que sumiram -> offline
+                for ip, (old_up, old_since) in prev.items():
+                    if ip in current_ips:
+                        continue
+                    old_since = old_since or now
+                    if (old_up or 0) == 1:
+                        # transicao up -> offline
+                        events.append(_mk_event(now, rname, typ, ip, names.get(ip, ""),
+                                                0, "offline", old_since))
+                        c.execute(
+                            "UPDATE neighbor_seen SET last_state='offline', up=0, since=? "
+                            "WHERE router_id=? AND type=? AND ip=?",
+                            (now, rid, typ, ip),
+                        )
+                    else:
+                        # ja estava down/offline: mantem o since
+                        c.execute(
+                            "UPDATE neighbor_seen SET last_state='offline', up=0 "
+                            "WHERE router_id=? AND type=? AND ip=?",
+                            (rid, typ, ip),
+                        )
+                    nm = names.get(ip, "")
+                    off = {"remote_ip": ip, "ip": ip, "state": "offline", "up": 0,
+                           "name": nm, "label": nm if nm else ip, "offline": True,
+                           "ignored": ip in ignored}
+                    if typ == "bfd":
+                        off.update({"local_ip": "", "vizinho": ip, "interface": ""})
+                    entries.append(off)
+
+        # grava o historico de eventos
+        for ev in events:
+            c.execute(
+                "INSERT INTO state_events (ts, router, type, ip, name, new_state, up, duration) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (ev["ts"], ev["router"], ev["type"], ev["ip"], ev["name"],
+                 ev["state"], ev["up"], ev["duration"]),
+            )
+
+        conn.commit()
+        conn.close()
+    return events
+
+
+def _mk_event(now, rname, typ, ip, nm, new_up, new_state, old_since):
+    return {
+        "ts": now, "router": rname, "type": typ, "ip": ip,
+        "name": nm, "label": nm if nm else ip,
+        "up": new_up, "state": new_state,
+        "duration": max(0, now - old_since) if old_since else 0,
+    }
 
 
 def get_all_metrics():
@@ -524,7 +768,10 @@ def get_all_metrics():
         for f in concurrent.futures.as_completed(futures):
             results.append(f.result())
 
-    _merge_registry(results)
+    events = _merge_registry(results)
+    # Notifica no Telegram apenas as transicoes (uma vez por queda/subida)
+    for ev in events:
+        _tg_send_async(_format_event(ev))
     # Remove os ignorados APENAS da visao do Grafana (o portal usa o banco direto)
     for r in results:
         r["ospf"] = [e for e in r["ospf"] if not e.get("ignored")]
@@ -668,7 +915,33 @@ def get_local_ip():
     return IP
 
 
+# --- POLLER DE FUNDO ---
+# Coleta os PEs periodicamente mesmo sem ninguem olhando o portal, para que as
+# quedas/subidas sejam detectadas e notificadas no Telegram em tempo real.
+
+_POLL_INTERVAL = 30  # segundos
+_poller_started = False
+
+
+def _start_poller():
+    global _poller_started
+    if _poller_started:
+        return
+    _poller_started = True
+
+    def _loop():
+        while True:
+            try:
+                get_all_metrics()
+            except Exception:
+                pass
+            time.sleep(_POLL_INTERVAL)
+
+    threading.Thread(target=_loop, daemon=True).start()
+
+
 if __name__ == '__main__':
+    _start_poller()
     ip = get_local_ip()
     print(f"\n\n=== VM Portal rodando em: http://{ip}:8080 ===\n\n")
     app.run(host='0.0.0.0', port=8080)
