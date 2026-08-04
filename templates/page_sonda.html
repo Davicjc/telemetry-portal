@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}Sonda - Telemetry Portal{% endblock %}
+
+{% block extra_css %}
+    .sd-status { display:inline-flex; align-items:center; gap:.5rem; padding:.35rem .9rem;
+        border-radius:999px; font-size:.85rem; font-weight:600; }
+    .sd-on  { background: rgba(52,211,153,.15); color: var(--ok); border:1px solid rgba(52,211,153,.35); }
+    .sd-off { background: rgba(239,68,68,.15); color: var(--danger); border:1px solid rgba(239,68,68,.35); }
+    .sd-muted { background: rgba(148,163,184,.15); color: var(--text-muted); border:1px solid var(--glass-border); }
+    .switch { display:flex; align-items:center; gap:.7rem; margin: .5rem 0 1.2rem; }
+    .switch input { width:18px; height:18px; accent-color: var(--primary); }
+    .copybox { display:flex; gap:.5rem; }
+    .copybox input { font-family: ui-monospace, monospace; font-size:.85rem; }
+    .btn-mini { padding:.5rem .9rem; font-size:.8rem; background:#64748b; }
+    .btn-mini:hover { background:#475569; }
+
+    .metrics-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:.8rem; margin:1rem 0; }
+    .metric { background: rgba(0,0,0,.18); border:1px solid var(--glass-border); border-radius:.6rem; padding:.8rem 1rem; }
+    .metric .lbl { color: var(--text-muted); font-size:.75rem; text-transform:uppercase; letter-spacing:.02em; }
+    .metric .val { font-size:1.5rem; font-weight:700; margin-top:.2rem; }
+    .metric .val small { font-size:.85rem; color: var(--text-muted); font-weight:600; }
+
+    .chart-wrap { margin-top:1rem; }
+    .chart-wrap h4 { font-size:.85rem; color: var(--text-muted); font-weight:600; margin-bottom:.4rem; }
+    .legend { display:flex; gap:1rem; flex-wrap:wrap; margin:.3rem 0 .6rem; font-size:.8rem; color: var(--text-muted); }
+    .legend span { display:inline-flex; align-items:center; gap:.35rem; }
+    .legend i { width:12px; height:3px; border-radius:2px; display:inline-block; }
+    .charts-2 { display:grid; grid-template-columns:2fr 1fr; gap:1.5rem; }
+    @media (max-width: 900px){ .charts-2{ grid-template-columns:1fr; } }
+
+    .guide { counter-reset: step; }
+    .guide .step {
+        position: relative; padding: 1rem 1rem 1rem 3.2rem; margin-bottom: .8rem;
+        background: rgba(0,0,0,.18); border:1px solid var(--glass-border); border-radius:.7rem;
+    }
+    .guide .step::before {
+        counter-increment: step; content: counter(step);
+        position:absolute; left:.9rem; top:1rem; width:1.7rem; height:1.7rem;
+        display:flex; align-items:center; justify-content:center;
+        background: var(--primary); color:#fff; border-radius:50%; font-weight:700; font-size:.9rem;
+    }
+    .guide .step b { color: var(--text-main); }
+    .inline-code {
+        background: rgba(0,0,0,.35); padding:.15rem .45rem; border-radius:.35rem;
+        font-family: ui-monospace, monospace; color:#93c5fd; font-size:.9rem;
+    }
+    pre.code {
+        background: rgba(0,0,0,.4); border:1px solid var(--glass-border); border-radius:.6rem;
+        padding:1rem; overflow-x:auto; font-family: ui-monospace, monospace; font-size:.82rem;
+        color:#cbd5e1; line-height:1.5; white-space:pre;
+    }
+{% endblock %}
+
+{% block content %}
+    <div class="grid">
+        <div class="card">
+            <h2>📡 Configuração da Sonda</h2>
+            <p style="color: var(--text-muted); margin-bottom:1.2rem; font-size:.9rem;">
+                A sonda (RB750Gr3) envia as métricas de experiência (PPPoE, latência, perda,
+                DNS…) para o endereço abaixo. O portal recebe, guarda e mostra tudo aqui.
+            </p>
+
+            <div class="input-group">
+                <label>URL de ingestão (aponte a RB para cá)</label>
+                <div class="copybox">
+                    <input type="text" id="ingest_url" value="{{ cfg.ingest_url }}" readonly>
+                    <button type="button" class="btn btn-mini" onclick="copyVal('ingest_url', this)">Copiar</button>
+                </div>
+            </div>
+
+            <form action="{{ url_for('sonda_save') }}" method="POST">
+                <div class="switch">
+                    <input type="checkbox" id="auth_enabled" name="auth_enabled" {% if cfg.auth_enabled %}checked{% endif %}>
+                    <label for="auth_enabled" style="margin:0; color: var(--text-main);">Exigir token (recomendado)</label>
+                </div>
+                <div class="input-group">
+                    <label>Token da sonda (envie junto no POST)</label>
+                    <div class="copybox">
+                        <input type="text" id="token" name="token" value="{{ cfg.token }}" autocomplete="off">
+                        <button type="button" class="btn btn-mini" onclick="copyVal('token', this)">Copiar</button>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label>Considerar sonda offline após (segundos sem dados)</label>
+                    <input type="number" name="offline_after" value="{{ cfg.offline_after }}" min="15" step="5">
+                </div>
+                <button type="submit" class="btn" style="width:100%;">Salvar configuração</button>
+            </form>
+
+            <form action="{{ url_for('sonda_regenerate_token') }}" method="POST" style="margin-top:.8rem;"
+                  onsubmit="return confirm('Gerar um novo token? A RB750Gr3 vai parar de ser aceita até você atualizar o token nela.');">
+                <button type="submit" class="btn btn-danger" style="width:100%;">Regenerar token</button>
+            </form>
+
+            <p style="color: var(--text-muted); margin-top:1rem; font-size:.85rem;">
+                Quando uma sonda <b>para de enviar</b> ou o <b>PPPoE cai</b>, o portal avisa
+                <b>uma única vez</b> no Telegram (e outra ao voltar, com o tempo fora) — se o
+                Telegram estiver ativo na aba correspondente.
+            </p>
+        </div>
+
+        <div class="card">
+            <h2>📖 Como configurar a RB750Gr3 do zero</h2>
+            <div class="guide">
+                <div class="step">
+                    <b>Copie a URL e o Token</b> aqui do lado — você vai colar os dois no script da RB.
+                </div>
+                <div class="step">
+                    <b>Na RB, crie um script</b> em <span class="inline-code">/system script</span> que coleta as
+                    métricas e envia via <span class="inline-code">/tool fetch</span>. Modelo pronto (ajuste os
+                    alvos e o nome da interface PPPoE):
+                    <pre class="code">
+:local url "{{ cfg.ingest_url }}"
+:local token "{{ cfg.token }}"
+:local probe "uberaba"
+
+# Alvos de teste (ajuste)
+:local gw   "192.0.2.1"      ;# gateway/BRAS
+:local core "198.51.100.1"   ;# IP do Core da Sede
+:local dns  "1.1.1.1"
+
+# PPPoE: troque "pppoe-out1" pelo nome da sua interface
+:local pppoe "down"
+:if ([/interface pppoe-client get [find name="pppoe-out1"] running] = true) do={ :set pppoe "up" }
+
+# Ping: media de latencia (ms) e perda (%) em 10 pacotes
+:local n 10
+:local recv 0
+:local sum 0
+:foreach p in=[/ping $gw count=$n as-value] do={
+    :if ([:typeof ($p->"time")] != "nothing") do={
+        :set recv ($recv + 1)
+        :set sum  ($sum + [:tonum ($p->"time")])
+    }
+}
+:local lat 0
+:if ($recv > 0) do={ :set lat (($sum / $recv) / 1000000) }   ;# ns -> ms
+:local loss (100 - ($recv * 100 / $n))
+
+# Monta o corpo e envia
+:local body "{\"probe\":\"$probe\",\"token\":\"$token\",\"pppoe\":\"$pppoe\",\
+\"metrics\":{\"latency_gateway_ms\":$lat,\"loss_pct\":$loss}}"
+/tool fetch url=$url http-method=post \
+  http-header-field="Content-Type: application/json" \
+  http-data=$body keep-result=no</pre>
+                </div>
+                <div class="step">
+                    <b>Alternativa simples</b> (sem montar JSON): mande os campos na própria URL. Bom para começar rápido —
+                    o portal aceita qualquer campo numérico como métrica:
+                    <pre class="code">/tool fetch keep-result=no http-method=post http-data="" \
+  url="{{ cfg.ingest_url }}?token={{ cfg.token }}&amp;probe=uberaba&amp;pppoe=up&amp;latency_gateway_ms=3.2&amp;loss_pct=0"</pre>
+                </div>
+                <div class="step">
+                    <b>Agende</b> em <span class="inline-code">/system scheduler</span> para rodar a cada 30s:
+                    <pre class="code">/system scheduler add name=sonda-telemetry interval=30s \
+  on-event="/system script run sonda-telemetry"</pre>
+                </div>
+                <div class="step">
+                    <b>Pronto.</b> Em segundos os cards e gráficos abaixo começam a preencher. Se não aparecer,
+                    confira o token e se a RB alcança a URL (na RB: <span class="inline-code">/tool fetch url="{{ cfg.ingest_url }}" ...</span>).
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin:2rem 0 1rem;">
+        <h2 style="font-weight:600;">🛰️ Sondas ao vivo</h2>
+        <span id="updated" style="color: var(--text-muted); font-size:.85rem;">carregando…</span>
+    </div>
+    <div id="probes"><div class="card"><span style="color:var(--text-muted);">Aguardando dados das sondas…</span></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const $ = id => document.getElementById(id);
+  const esc = s => (s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+
+  // Metadados das metricas conhecidas (rotulo, unidade, grupo de grafico, cor)
+  const META = {
+    latency_gateway_ms: { label:'Latência Gateway', unit:'ms', group:'latency', color:'#60a5fa' },
+    latency_core_ms:    { label:'Latência Core',    unit:'ms', group:'latency', color:'#34d399' },
+    latency_dns_ms:     { label:'Latência DNS',     unit:'ms', group:'latency', color:'#fbbf24' },
+    jitter_ms:          { label:'Jitter',           unit:'ms', group:'latency', color:'#f472b6' },
+    loss_pct:           { label:'Perda de Pacotes', unit:'%',  group:'loss',    color:'#ef4444' },
+    dns_query_ms:       { label:'Resolução DNS',    unit:'ms' },
+    http_mbps:          { label:'Throughput HTTP',  unit:'Mbps' },
+  };
+  const metaOf = k => META[k] || { label:k, unit:'' };
+  const fmtNum = v => (v == null ? '—' : (Math.round(v * 10) / 10).toString());
+  const colorFor = (k, i) => (META[k] && META[k].color) || ['#60a5fa','#34d399','#fbbf24','#f472b6','#a78bfa'][i % 5];
+
+  function pppoeBadge(state){
+    const s = (state || '').toLowerCase();
+    if (s === 'up')   return '<span class="sd-status sd-on">PPPoE ● up</span>';
+    if (s === 'down') return '<span class="sd-status sd-off">PPPoE ● down</span>';
+    return '<span class="sd-status sd-muted">PPPoE ● n/d</span>';
+  }
+  function onlineBadge(online, age){
+    const a = (age == null) ? '' : ' · há ' + age + 's';
+    return online
+      ? '<span class="sd-status sd-on">● Online' + a + '</span>'
+      : '<span class="sd-status sd-off">● Offline' + a + '</span>';
+  }
+
+  // Grafico de linha em SVG puro (sem libs). lines: [{name,color,pts:[{x,y}]}]
+  function lineChart(ts, lines, unit){
+    const W = 640, H = 200, PL = 44, PR = 12, PT = 12, PB = 24;
+    const iw = W - PL - PR, ih = H - PT - PB;
+    const xs = ts;
+    let vmin = Infinity, vmax = -Infinity;
+    lines.forEach(l => l.data.forEach(v => { if (v != null){ if (v < vmin) vmin = v; if (v > vmax) vmax = v; } }));
+    if (!isFinite(vmin)) { vmin = 0; vmax = 1; }
+    if (vmin === vmax) { vmax = vmin + 1; vmin = Math.max(0, vmin - 1); }
+    // margem de 8% em cima
+    vmax = vmax + (vmax - vmin) * 0.08;
+    const tmin = xs[0], tmax = xs[xs.length - 1] || tmin + 1;
+    const X = i => PL + (xs.length <= 1 ? iw : (iw * (xs[i] - tmin) / (tmax - tmin || 1)));
+    const Y = v => PT + ih - (ih * (v - vmin) / (vmax - vmin || 1));
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="none" style="height:200px;">`;
+    // gridlines horizontais + labels
+    const G = 4;
+    for (let g = 0; g <= G; g++){
+      const val = vmin + (vmax - vmin) * g / G;
+      const y = Y(val);
+      svg += `<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.08)" stroke-width="1"/>`;
+      svg += `<text x="${PL-6}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="10" fill="#94a3b8">${fmtNum(val)}</text>`;
+    }
+    // labels de tempo (inicio / meio / fim)
+    [0, Math.floor((xs.length-1)/2), xs.length-1].forEach((i, k) => {
+      if (i < 0 || i >= xs.length) return;
+      const d = new Date(xs[i] * 1000);
+      const hh = d.toLocaleTimeString('pt-BR');
+      const anchor = k === 0 ? 'start' : (k === 2 ? 'end' : 'middle');
+      svg += `<text x="${X(i).toFixed(1)}" y="${H-8}" text-anchor="${anchor}" font-size="10" fill="#64748b">${hh}</text>`;
+    });
+    // linhas
+    lines.forEach(l => {
+      let d = '', pen = false;
+      l.data.forEach((v, i) => {
+        if (v == null){ pen = false; return; }
+        d += (pen ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1);
+        pen = true;
+      });
+      svg += `<path d="${d}" fill="none" stroke="${l.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+    });
+    svg += `</svg>`;
+    return svg;
+  }
+
+  function chartBlock(title, ts, keys, series, unit){
+    const lines = keys.map((k, i) => ({ name: metaOf(k).label, color: colorFor(k, i), data: series[k] }))
+                      .filter(l => l.data && l.data.some(v => v != null));
+    if (!lines.length) return '';
+    const legend = lines.map(l => `<span><i style="background:${l.color}"></i>${esc(l.name)}</span>`).join('');
+    return `<div class="chart-wrap">
+      <h4>${esc(title)}${unit ? ' <span style="color:#64748b">('+unit+')</span>' : ''}</h4>
+      <div class="legend">${legend}</div>
+      ${lineChart(ts, lines, unit)}
+    </div>`;
+  }
+
+  function probeCard(p){
+    // cards de metricas (todas as metricas da ultima leitura)
+    const keys = Object.keys(p.last || {});
+    const cards = keys.map(k => {
+      const m = metaOf(k);
+      return `<div class="metric"><div class="lbl">${esc(m.label)}</div>
+        <div class="val">${fmtNum(p.last[k])} <small>${esc(m.unit)}</small></div></div>`;
+    }).join('') || '<div style="color:var(--text-muted)">Sem métricas nesta leitura.</div>';
+
+    // separa as series por grupo de grafico
+    const s = p.series || {};
+    const latKeys = Object.keys(s).filter(k => k !== 'ts' && metaOf(k).group === 'latency');
+    const lossKeys = Object.keys(s).filter(k => k !== 'ts' && metaOf(k).group === 'loss');
+    const ts = s.ts || [];
+    let charts = '';
+    if (ts.length >= 2){
+      const c1 = chartBlock('Latência', ts, latKeys, s, 'ms');
+      const c2 = chartBlock('Perda de Pacotes', ts, lossKeys, s, '%');
+      if (c1 || c2) charts = `<div class="charts-2">${c1 || '<div></div>'}${c2 || '<div></div>'}</div>`;
+    } else {
+      charts = '<p style="color:var(--text-muted); font-size:.85rem;">Coletando pontos para os gráficos…</p>';
+    }
+
+    return `<div class="card" style="margin-bottom:1.5rem;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem;">
+        <span style="font-size:1.15rem; font-weight:700;">📍 ${esc(p.probe)}</span>
+        <span style="display:flex; gap:.5rem; flex-wrap:wrap;">${onlineBadge(p.online, p.age_s)} ${pppoeBadge(p.pppoe)}</span>
+      </div>
+      <div class="metrics-grid">${cards}</div>
+      ${charts}
+    </div>`;
+  }
+
+  async function load(){
+    try {
+      const r = await fetch('/api/probe/samples', { cache:'no-store' });
+      const data = await r.json();
+      const probes = data.probes || [];
+      $('probes').innerHTML = probes.length
+        ? probes.map(probeCard).join('')
+        : '<div class="card"><span style="color:var(--text-muted);">Nenhuma sonda enviou dados ainda. Siga o guia acima para configurar a RB750Gr3.</span></div>';
+      $('updated').textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR');
+    } catch (e) {
+      $('updated').textContent = 'erro ao carregar: ' + e.message;
+    }
+  }
+
+  function copyVal(id, btn){
+    const el = $(id);
+    el.select(); el.setSelectionRange(0, 99999);
+    navigator.clipboard.writeText(el.value).then(() => {
+      const t = btn.textContent; btn.textContent = 'Copiado!';
+      setTimeout(() => btn.textContent = t, 1200);
+    }).catch(() => {});
+  }
+
+  load();
+  setInterval(load, 10000);
+</script>
+{% endblock %}

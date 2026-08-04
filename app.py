@@ -1,6 +1,8 @@
 import os
 import sqlite3
 import time
+import json
+import secrets
 import threading
 import urllib.request
 import urllib.parse
@@ -33,7 +35,8 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-DB_FILE = os.path.join(BASE_DIR, 'telemetry.db')
+# Caminho do banco (permite apontar para outro arquivo em testes via TELEMETRY_DB)
+DB_FILE = os.environ.get('TELEMETRY_DB') or os.path.join(BASE_DIR, 'telemetry.db')
 
 
 def init_db():
@@ -64,6 +67,15 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS state_events (
         id INTEGER PRIMARY KEY, ts REAL, router TEXT, type TEXT, ip TEXT,
         name TEXT, new_state TEXT, up INTEGER, duration REAL)''')
+    # Leituras recebidas das sondas (Active Probing - RB750Gr3 etc.)
+    c.execute('''CREATE TABLE IF NOT EXISTS probe_samples (
+        id INTEGER PRIMARY KEY, ts REAL, probe TEXT, payload TEXT)''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_probe_samples_probe_ts
+        ON probe_samples (probe, ts)''')
+    # Estado atual de cada sonda (para detectar borda: offline/online, PPPoE)
+    c.execute('''CREATE TABLE IF NOT EXISTS probe_status (
+        probe TEXT PRIMARY KEY, last_ts REAL, online INTEGER,
+        pppoe TEXT, since REAL)''')
 
     # Migracao: coluna 'since' (desde quando o vizinho esta no estado atual)
     cols = [row[1] for row in c.execute("PRAGMA table_info(neighbor_seen)").fetchall()]
@@ -212,6 +224,187 @@ def _format_event(ev):
         if ev.get("duration"):
             linhas.append(f"Estava estável há: {_fmt_duration(ev['duration'])}")
     return "\n".join(linhas)
+
+
+# --- SONDAS (ACTIVE PROBING) ---
+
+# Chaves que nao sao metricas dentro do corpo recebido
+_PROBE_RESERVED = {"probe", "token", "pppoe"}
+
+
+def get_probe_token():
+    """Token da sonda: gera e persiste automaticamente na primeira vez."""
+    tok = get_setting('probe_token', '').strip()
+    if not tok:
+        tok = secrets.token_hex(16)
+        set_setting('probe_token', tok)
+    return tok
+
+
+def _coerce_num(v):
+    """Converte para float se parecer numero; senao retorna None."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip().replace('%', '').replace(',', '.')
+        try:
+            return float(s)
+        except ValueError:
+            return None
+    return None
+
+
+def _parse_probe_request(req):
+    """Aceita JSON no corpo, form ou query string. Retorna dict normalizado:
+    {probe, token, pppoe, metrics{...}}. Tolerante ao /tool fetch do RouterOS."""
+    data = {}
+    if req.is_json:
+        data = req.get_json(silent=True) or {}
+    if not data and req.data:
+        try:
+            data = json.loads(req.data.decode('utf-8', 'ignore'))
+        except Exception:
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+
+    # campos soltos (query + form) servem de fallback e complemento
+    flat = {}
+    flat.update(req.args.to_dict())
+    flat.update(req.form.to_dict())
+
+    token = (req.headers.get('X-Probe-Token')
+             or data.get('token') or flat.get('token') or '').strip()
+    probe = str(data.get('probe') or flat.get('probe') or 'sonda').strip() or 'sonda'
+    pppoe = str(data.get('pppoe') or flat.get('pppoe') or '').strip().lower()
+
+    metrics = {}
+    raw_metrics = data.get('metrics')
+    if isinstance(raw_metrics, dict):
+        for k, v in raw_metrics.items():
+            n = _coerce_num(v)
+            if n is not None:
+                metrics[str(k)] = n
+    # quaisquer campos numericos soltos (nao reservados) tambem viram metricas
+    for src in (data, flat):
+        for k, v in src.items():
+            if k in _PROBE_RESERVED or k == 'metrics':
+                continue
+            if k in metrics:
+                continue
+            n = _coerce_num(v)
+            if n is not None:
+                metrics[str(k)] = n
+
+    return {"probe": probe, "token": token, "pppoe": pppoe, "metrics": metrics}
+
+
+def _probe_offline_after():
+    try:
+        return max(15, int(float(get_setting('probe_offline_after', '120'))))
+    except (ValueError, TypeError):
+        return 120
+
+
+def _fmt_probe_event(probe, kind, pppoe=None, downtime=None):
+    """Monta a mensagem de sonda para o Telegram (borda unica)."""
+    quando = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    if kind == 'offline':
+        linhas = [
+            f"🔴 <b>SONDA SEM DADOS</b>",
+            f"Sonda: <b>{probe}</b>",
+            f"Parou de enviar telemetria.",
+            f"Quando: {quando}",
+        ]
+    elif kind == 'online':
+        linhas = [
+            f"🟢 <b>SONDA RESTABELECIDA</b>",
+            f"Sonda: <b>{probe}</b>",
+            f"Voltou a enviar telemetria.",
+            f"Quando: {quando}",
+        ]
+        if downtime:
+            linhas.append(f"Ficou fora por: {_fmt_duration(downtime)}")
+    elif kind == 'pppoe_down':
+        linhas = [
+            f"🔴 <b>PPPoE CAIU</b> — Sonda",
+            f"Sonda: <b>{probe}</b>",
+            f"Sessao PPPoE: down",
+            f"Quando: {quando}",
+        ]
+    elif kind == 'pppoe_up':
+        linhas = [
+            f"🟢 <b>PPPoE RESTABELECIDO</b> — Sonda",
+            f"Sonda: <b>{probe}</b>",
+            f"Sessao PPPoE: up",
+            f"Quando: {quando}",
+        ]
+        if downtime:
+            linhas.append(f"Ficou fora por: {_fmt_duration(downtime)}")
+    else:
+        linhas = [f"Sonda <b>{probe}</b>: {kind}"]
+    return "\n".join(linhas)
+
+
+_probe_lock = threading.Lock()
+
+
+def _probe_ingest_update(probe, pppoe):
+    """Atualiza o estado da sonda ao receber dados e detecta transicoes de
+    borda (offline->online e PPPoE up<->down) para notificar UMA vez."""
+    now = time.time()
+    msgs = []
+    with _probe_lock:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        row = c.execute("SELECT online, pppoe, since FROM probe_status WHERE probe=?",
+                        (probe,)).fetchone()
+        if row is None:
+            c.execute("INSERT INTO probe_status (probe, last_ts, online, pppoe, since) "
+                      "VALUES (?, ?, 1, ?, ?)", (probe, now, pppoe, now))
+        else:
+            old_online, old_pppoe, old_since = row
+            old_since = old_since or now
+            # offline -> online
+            if not old_online:
+                msgs.append(_fmt_probe_event(probe, 'online', downtime=now - old_since))
+                new_since = now
+            else:
+                new_since = old_since
+            # transicao de PPPoE (so quando ja conheciamos o estado anterior)
+            if pppoe and old_pppoe and pppoe != old_pppoe:
+                if pppoe == 'down':
+                    msgs.append(_fmt_probe_event(probe, 'pppoe_down'))
+                elif pppoe == 'up' and old_pppoe == 'down':
+                    msgs.append(_fmt_probe_event(probe, 'pppoe_up'))
+            c.execute("UPDATE probe_status SET last_ts=?, online=1, pppoe=?, since=? WHERE probe=?",
+                      (now, pppoe or old_pppoe, new_since, probe))
+        conn.commit()
+        conn.close()
+    for m in msgs:
+        _tg_send_async(m)
+
+
+def _check_probe_offline():
+    """Chamado pelo poller: marca como offline (borda) as sondas que pararam
+    de enviar dados alem do limite e avisa UMA vez no Telegram."""
+    limite = _probe_offline_after()
+    now = time.time()
+    msgs = []
+    with _probe_lock:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        rows = c.execute("SELECT probe, last_ts FROM probe_status WHERE online=1").fetchall()
+        for probe, last_ts in rows:
+            if last_ts and (now - last_ts) > limite:
+                c.execute("UPDATE probe_status SET online=0, since=? WHERE probe=?", (now, probe))
+                msgs.append(_fmt_probe_event(probe, 'offline'))
+        conn.commit()
+        conn.close()
+    for m in msgs:
+        _tg_send_async(m)
 
 
 # --- WEB UI ROUTES ---
@@ -365,6 +558,128 @@ def telegram_test():
         log_action('Testou o Telegram', f'falha: {e}')
         flash(f'Falha ao enviar: {e}')
     return redirect(url_for('telegram'))
+
+
+# --- SONDAS: PAGINA E INGESTAO ---
+
+@app.route('/sonda')
+@login_required
+def sonda():
+    cfg = {
+        "token": get_probe_token(),
+        "auth_enabled": get_setting('probe_auth_enabled', '1') == '1',
+        "offline_after": _probe_offline_after(),
+        "ingest_url": f"http://{get_local_ip()}:8080/api/probe",
+    }
+    return render_template('page_sonda.html', active='sonda', cfg=cfg)
+
+
+@app.route('/sonda/save', methods=['POST'])
+@login_required
+def sonda_save():
+    auth_enabled = '1' if request.form.get('auth_enabled') else '0'
+    set_setting('probe_auth_enabled', auth_enabled)
+    token = request.form.get('token', '').strip()
+    if token:
+        set_setting('probe_token', token)
+    try:
+        after = max(15, int(float(request.form.get('offline_after', '120'))))
+    except (ValueError, TypeError):
+        after = 120
+    set_setting('probe_offline_after', str(after))
+    log_action('Salvou config da Sonda', f'auth={auth_enabled}, offline_after={after}s')
+    flash('Configuração da Sonda salva.')
+    return redirect(url_for('sonda'))
+
+
+@app.route('/sonda/regenerate-token', methods=['POST'])
+@login_required
+def sonda_regenerate_token():
+    novo = secrets.token_hex(16)
+    set_setting('probe_token', novo)
+    log_action('Regenerou o token da Sonda')
+    flash('Novo token gerado. Atualize o token na configuração da RB750Gr3.')
+    return redirect(url_for('sonda'))
+
+
+@app.route('/api/probe', methods=['POST', 'GET'])
+def api_probe_ingest():
+    """Recebe a telemetria das sondas (Active Probing). Sem login: autentica
+    por token configuravel no painel. Tolerante a JSON, form ou query."""
+    p = _parse_probe_request(request)
+
+    if get_setting('probe_auth_enabled', '1') == '1':
+        if p["token"] != get_probe_token():
+            return jsonify({"ok": False, "error": "token invalido"}), 401
+
+    now = time.time()
+    payload = {"probe": p["probe"], "pppoe": p["pppoe"], "metrics": p["metrics"]}
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT INTO probe_samples (ts, probe, payload) VALUES (?, ?, ?)",
+              (now, p["probe"], json.dumps(payload)))
+    # retencao: mantem 2 dias
+    c.execute("DELETE FROM probe_samples WHERE ts < ?", (now - 2 * 86400,))
+    conn.commit()
+    conn.close()
+
+    # detecta borda (volta de offline / PPPoE) e notifica uma vez
+    _probe_ingest_update(p["probe"], p["pppoe"])
+
+    return jsonify({"ok": True, "probe": p["probe"], "metrics": len(p["metrics"])})
+
+
+@app.route('/api/probe/samples')
+@login_required
+def api_probe_samples():
+    """Alimenta os cards e graficos da aba Sonda (com auto-refresh no front)."""
+    limite = _probe_offline_after()
+    now = time.time()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    probes = [r[0] for r in c.execute(
+        "SELECT DISTINCT probe FROM probe_samples ORDER BY probe").fetchall()]
+    status = {r[0]: r for r in c.execute(
+        "SELECT probe, last_ts, online, pppoe FROM probe_status").fetchall()}
+
+    out = []
+    for probe in probes:
+        rows = c.execute(
+            "SELECT ts, payload FROM probe_samples WHERE probe=? ORDER BY ts DESC LIMIT 300",
+            (probe,)).fetchall()
+        rows = list(reversed(rows))  # ordem cronologica
+        samples = []
+        allkeys = set()
+        for ts, payload in rows:
+            try:
+                d = json.loads(payload)
+            except Exception:
+                continue
+            m = d.get("metrics") or {}
+            samples.append((ts, d.get("pppoe", "") or "", m))
+            allkeys.update(m.keys())
+        # series alinhadas (None quando a metrica nao veio naquela leitura)
+        series = {"ts": [s[0] for s in samples]}
+        for k in allkeys:
+            series[k] = [s[2].get(k) for s in samples]
+        last_metrics = samples[-1][2] if samples else {}
+        last_pppoe = samples[-1][1] if samples else ''
+
+        st = status.get(probe)
+        last_ts = st[1] if st else (rows[-1][0] if rows else 0)
+        age = now - last_ts if last_ts else None
+        online = bool(age is not None and age <= limite)
+        out.append({
+            "probe": probe,
+            "online": online,
+            "pppoe": st[3] if st else last_pppoe,
+            "last_ts": last_ts,
+            "age_s": round(age) if age is not None else None,
+            "last": last_metrics,
+            "series": series,
+        })
+    conn.close()
+    return jsonify({"offline_after": limite, "probes": out})
 
 
 @app.route('/router/add', methods=['POST'])
@@ -932,7 +1247,8 @@ def _start_poller():
     def _loop():
         while True:
             try:
-                get_all_metrics()
+                get_all_metrics()      # detecta quedas/retornos de OSPF/BFD
+                _check_probe_offline()  # detecta sondas que pararam de enviar
             except Exception:
                 pass
             time.sleep(_POLL_INTERVAL)
@@ -940,8 +1256,14 @@ def _start_poller():
     threading.Thread(target=_loop, daemon=True).start()
 
 
-if __name__ == '__main__':
+# Inicia o coletor de fundo JA no import, para que as quedas/retornos sejam
+# detectados e notificados no Telegram independentemente de como o processo
+# suba (python app.py, gunicorn/wsgi, etc.). Em testes, defina DISABLE_POLLER=1.
+if not os.environ.get('DISABLE_POLLER'):
     _start_poller()
+
+
+if __name__ == '__main__':
     ip = get_local_ip()
     print(f"\n\n=== VM Portal rodando em: http://{ip}:8080 ===\n\n")
     app.run(host='0.0.0.0', port=8080)

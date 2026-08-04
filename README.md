@@ -14,6 +14,7 @@ Feito para rodar numa VM Debian/Ubuntu e ser usado por qualquer empresa/provedor
 - 🙈 **Ignorar / Esquecer** — *ignorar* tira do painel mas mantém no registro; *esquecer* remove de vez.
 - 📨 **Alertas no Telegram** — avisa no seu grupo **assim que** um vizinho cai e **quando volta** (com horário e há quanto tempo ficou fora). Inteligente: notifica **uma única vez** por transição (não a cada consulta). A coleta roda em segundo plano a cada 30s, então alerta mesmo com ninguém olhando. Guia de configuração do zero embutido na própria aba.
 - ⏱️ **Tempo em cada estado** — o portal guarda desde quando cada vizinho está `online`/`offline` e mostra na tela, além do histórico de quedas e retornos.
+- 📡 **Sondas de experiência (Active Probing)** — uma RB750Gr3 (ou qualquer equipamento) envia métricas de experiência do cliente (PPPoE, latência, perda de pacotes, DNS, jitter…) para o portal via HTTP. A aba **Sonda** mostra o status ao vivo com **gráficos de linha** e avisa no Telegram quando a sonda cai ou o PPPoE quebra. Ingestão protegida por **token** configurável.
 - 🔀 **Auto-detecção de RouterOS v6 e v7** — o BFD é consultado por caminhos diferentes em cada versão; o portal descobre sozinho (sem checkbox).
 - 👥 **Multiusuário** — login, criar/remover usuários, trocar a própria senha.
 - 📜 **Log de auditoria** — registra quem adicionou/removeu/renomeou/ignorou cada coisa. Somente leitura (não pode ser apagado).
@@ -79,12 +80,34 @@ O alerta é enviado **uma vez** na queda e **uma vez** no retorno (com horário 
 
 ---
 
+## 📡 Sondas de experiência (Active Probing)
+
+Além de monitorar o **Core** (OSPF/BFD via API), o portal recebe telemetria de **sondas** instaladas no cliente/ponta — tipicamente uma **RB750Gr3** que autentica via PPPoE e mede a experiência real (latência até o gateway/sede/DNS, perda de pacotes, jitter, throughput). Assim você separa "problema no circuito" de "problema na ponta".
+
+Na aba **Sonda**:
+
+1. Copie a **URL de ingestão** (`http://<IP-DA-VM>:8080/api/probe`) e o **token**.
+2. Na RB, crie um script que coleta as métricas e envia via `/tool fetch` (modelo pronto na própria aba) e agende no `/system scheduler` (ex.: a cada 30s).
+3. As leituras aparecem em segundos: **cards de status** (PPPoE, latências, perda…) e **gráficos de linha** ao longo do tempo.
+
+A ingestão é um `POST` para `/api/probe`, tolerante a **JSON**, **form** ou **query string**. Campos: `probe` (nome da sonda), `token`, `pppoe` (`up`/`down`) e quaisquer **métricas numéricas** (ex.: `latency_gateway_ms`, `loss_pct`, `jitter_ms`). Exemplo simples:
+
+```
+/tool fetch keep-result=no http-method=post http-data="" \
+  url="http://<IP-DA-VM>:8080/api/probe?token=SEU_TOKEN&probe=uberaba&pppoe=up&latency_gateway_ms=3.2&loss_pct=0"
+```
+
+Se o token estiver ativo, POSTs sem o token correto são recusados (`401`). Quando uma sonda **para de enviar** ou o **PPPoE cai**, o portal avisa **uma vez** no Telegram (e outra ao voltar, com o tempo fora).
+
+---
+
 ## 🖥️ As abas do portal
 
 | Aba | O que faz |
 |-----|-----------|
 | **📊 Gráficos** | Painel de status ao vivo, separado por PE. Auto-refresh a cada 10s. |
 | **🖥️ Roteadores** | Cadastrar PEs e gerenciar vizinhos (nomear / ignorar / esquecer) e ver desde quando cada um está no estado atual. |
+| **📡 Sonda** | Receber telemetria de sondas (RB750Gr3), com status ao vivo e gráficos de linha. Configura o token de ingestão e traz o passo a passo da RB. |
 | **📨 Telegram** | Configurar o bot e o grupo de alertas, testar o envio, e ver o histórico de quedas/retornos. Traz um passo a passo completo de como criar o bot. |
 | **👥 Usuários** | Trocar a própria senha, criar e remover usuários. |
 | **📜 Logs** | Histórico de auditoria (somente leitura). |
