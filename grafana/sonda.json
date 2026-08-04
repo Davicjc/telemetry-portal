@@ -1,0 +1,343 @@
+{
+  "uid": "sonda-telemetry",
+  "title": "📡 Telemetria de Sonda — Experiência (RB750Gr3)",
+  "description": "Experiência de rede (PPPoE e perda de pacotes por destino) das sondas de Active Probing, coletada via Telemetry Portal.",
+  "tags": ["sonda", "probe", "noc", "mikrotik", "experiencia"],
+  "timezone": "browser",
+  "refresh": "10s",
+  "schemaVersion": 38,
+  "editable": true,
+  "graphTooltip": 1,
+  "time": { "from": "now-3h", "to": "now" },
+  "links": [
+    {
+      "title": "⚙️ Portal (aba Sonda)",
+      "type": "link",
+      "url": "http://REPLACE_VM_IP:8080/sonda",
+      "icon": "cog",
+      "tooltip": "Abrir a aba Sonda no portal",
+      "targetBlank": true,
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "SONDA",
+        "label": "Sonda",
+        "type": "query",
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "current": { "selected": false, "text": "", "value": "" },
+        "hide": 0, "includeAll": false, "multi": false, "refresh": 2, "sort": 1, "options": [],
+        "definition": "probe",
+        "query": {
+          "queryType": "infinity",
+          "infinityQuery": {
+            "refId": "variable", "type": "json", "source": "url", "format": "table", "parser": "backend",
+            "url": "http://REPLACE_VM_IP:8080/api/probe/grafana",
+            "url_options": { "method": "GET", "data": "" },
+            "root_selector": "$",
+            "columns": [ { "selector": "probe", "text": "probe", "type": "string" } ]
+          }
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 90, "title": "🛰️ Visão geral das sondas", "type": "row", "collapsed": false, "panels": []
+    },
+    {
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "id": 1, "title": "Sondas monitoradas", "type": "stat", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana", "url_options": { "method": "GET" },
+        "root_selector": "[{\"n\": $count($)}]",
+        "columns": [ { "selector": "n", "text": "n", "type": "number" } ]
+      } ],
+      "fieldConfig": { "defaults": {
+        "noValue": "0", "unit": "short", "decimals": 0,
+        "color": { "mode": "fixed", "fixedColor": "purple" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "purple", "value": null } ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "id": 2, "title": "Online", "type": "stat", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana", "url_options": { "method": "GET" },
+        "root_selector": "[{\"n\": $count($[online=1])}]",
+        "columns": [ { "selector": "n", "text": "n", "type": "number" } ]
+      } ],
+      "fieldConfig": { "defaults": {
+        "noValue": "0", "unit": "short", "decimals": 0,
+        "color": { "mode": "fixed", "fixedColor": "green" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "id": 3, "title": "Com perda", "type": "stat", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana", "url_options": { "method": "GET" },
+        "root_selector": "[{\"n\": $count($[alarm=1])}]",
+        "columns": [ { "selector": "n", "text": "n", "type": "number" } ]
+      } ],
+      "fieldConfig": { "defaults": {
+        "noValue": "0", "unit": "short", "decimals": 0,
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "id": 4, "title": "PPPoE down", "type": "stat", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana", "url_options": { "method": "GET" },
+        "root_selector": "[{\"n\": $count($[pppoe='down'])}]",
+        "columns": [ { "selector": "n", "text": "n", "type": "number" } ]
+      } ],
+      "fieldConfig": { "defaults": {
+        "noValue": "0", "unit": "short", "decimals": 0,
+        "color": { "mode": "thresholds" },
+        "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+      }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "colorMode": "background", "graphMode": "none", "textMode": "value_and_name", "justifyMode": "center", "wideLayout": true }
+    },
+    {
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
+      "id": 5, "title": "📋 Status atual por sonda", "type": "table", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "table",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana", "url_options": { "method": "GET" },
+        "root_selector": "$",
+        "columns": [
+          { "selector": "probe", "text": "Sonda", "type": "string" },
+          { "selector": "status", "text": "Status", "type": "string" },
+          { "selector": "pppoe", "text": "PPPoE", "type": "string" },
+          { "selector": "worst_loss", "text": "Pior perda", "type": "number" },
+          { "selector": "cpu", "text": "CPU", "type": "number" },
+          { "selector": "mem_free", "text": "Mem livre", "type": "number" },
+          { "selector": "dns_ok", "text": "DNS", "type": "number" },
+          { "selector": "http_ok", "text": "HTTP", "type": "number" },
+          { "selector": "age_s", "text": "Última leitura", "type": "number" }
+        ]
+      } ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" }, "inspect": false, "filterable": true },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.align", "value": "center" },
+              { "id": "custom.width", "value": 120 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [ { "type": "value", "options": {
+                  "Online": { "color": "dark-green", "index": 0, "text": "✅ Online" },
+                  "Offline": { "color": "dark-red", "index": 1, "text": "❌ Offline" }
+              } } ] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "PPPoE" },
+            "properties": [
+              { "id": "custom.align", "value": "center" },
+              { "id": "custom.width", "value": 110 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [ { "type": "value", "options": {
+                  "up": { "color": "dark-green", "index": 0, "text": "up" },
+                  "down": { "color": "dark-red", "index": 1, "text": "down" },
+                  "n/d": { "color": "dark-blue", "index": 2, "text": "n/d" }
+              } } ] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Última leitura" },
+            "properties": [ { "id": "unit", "value": "s" }, { "id": "custom.align", "value": "center" }, { "id": "custom.width", "value": 140 } ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Pior perda" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "decimals", "value": 1 },
+              { "id": "custom.align", "value": "center" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                  { "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 20 }
+              ] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "CPU" },
+            "properties": [
+              { "id": "unit", "value": "percent" }, { "id": "custom.align", "value": "center" },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                  { "color": "green", "value": null }, { "color": "orange", "value": 70 }, { "color": "red", "value": 90 } ] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Mem livre" },
+            "properties": [
+              { "id": "unit", "value": "percent" }, { "id": "custom.align", "value": "center" },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+                  { "color": "red", "value": null }, { "color": "orange", "value": 10 }, { "color": "green", "value": 20 } ] } },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "DNS" },
+            "properties": [
+              { "id": "custom.align", "value": "center" }, { "id": "custom.width", "value": 90 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [ { "type": "value", "options": {
+                  "1": { "color": "dark-green", "index": 0, "text": "✅ OK" },
+                  "0": { "color": "dark-red", "index": 1, "text": "❌ FALHA" } } } ] }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "HTTP" },
+            "properties": [
+              { "id": "custom.align", "value": "center" }, { "id": "custom.width", "value": 90 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } },
+              { "id": "mappings", "value": [ { "type": "value", "options": {
+                  "1": { "color": "dark-green", "index": 0, "text": "✅ OK" },
+                  "0": { "color": "dark-red", "index": 1, "text": "❌ FALHA" } } } ] }
+            ]
+          }
+        ]
+      },
+      "options": { "showHeader": true, "cellHeight": "md", "footer": { "show": false } }
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 91, "title": "📉 Perda por destino — $SONDA", "type": "row", "collapsed": false, "panels": []
+    },
+    {
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 14 },
+      "id": 10, "title": "📉 Perda de pacotes ao longo do tempo — $SONDA", "type": "timeseries", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "timeseries",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana/series?probe=${SONDA}",
+        "url_options": { "method": "GET" },
+        "root_selector": "$",
+        "columns": [
+          { "selector": "time", "text": "time", "type": "timestamp_epoch" },
+          { "selector": "BRAS", "text": "BRAS", "type": "number" },
+          { "selector": "Core (Sede)", "text": "Core (Sede)", "type": "number" },
+          { "selector": "Google", "text": "Google", "type": "number" },
+          { "selector": "Cloudflare", "text": "Cloudflare", "type": "number" },
+          { "selector": "DNS 2", "text": "DNS 2", "type": "number" }
+        ]
+      } ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0,
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": true, "pointSize": 5, "axisPlacement": "auto", "gradientMode": "opacity" },
+          "color": { "mode": "palette-classic" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max", "mean"] }
+      }
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "id": 93, "title": "⏱️ Latência por destino — $SONDA", "type": "row", "collapsed": false, "panels": []
+    },
+    {
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 25 },
+      "id": 12, "title": "⏱️ Latência (RTT) ao longo do tempo — $SONDA", "type": "timeseries", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "timeseries",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana/series?type=latency&probe=${SONDA}",
+        "url_options": { "method": "GET" },
+        "root_selector": "$",
+        "columns": [
+          { "selector": "time", "text": "time", "type": "timestamp_epoch" },
+          { "selector": "BRAS", "text": "BRAS", "type": "number" },
+          { "selector": "Core (Sede)", "text": "Core (Sede)", "type": "number" },
+          { "selector": "Google", "text": "Google", "type": "number" },
+          { "selector": "Cloudflare", "text": "Cloudflare", "type": "number" },
+          { "selector": "DNS 2", "text": "DNS 2", "type": "number" }
+        ]
+      } ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms", "min": 0,
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never", "spanNulls": true, "gradientMode": "opacity" },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max", "mean"] }
+      }
+    },
+    {
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 92, "title": "🖥️ Saúde da RB — $SONDA", "type": "row", "collapsed": false, "panels": []
+    },
+    {
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 36 },
+      "id": 11, "title": "🖥️ CPU e Memória livre da sonda — $SONDA", "type": "timeseries", "transparent": true,
+      "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+      "targets": [ {
+        "datasource": { "type": "yesoreyeram-infinity-datasource", "uid": "REPLACE_INFINITY_DATASOURCE_UID" },
+        "refId": "A", "type": "json", "source": "url", "parser": "backend", "format": "timeseries",
+        "url": "http://REPLACE_VM_IP:8080/api/probe/grafana/series?type=health&probe=${SONDA}",
+        "url_options": { "method": "GET" },
+        "root_selector": "$",
+        "columns": [
+          { "selector": "time", "text": "time", "type": "timestamp_epoch" },
+          { "selector": "CPU", "text": "CPU", "type": "number" },
+          { "selector": "Mem livre", "text": "Mem livre", "type": "number" }
+        ]
+      } ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent", "min": 0, "max": 100,
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 12, "showPoints": "never", "spanNulls": true, "gradientMode": "opacity" },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max", "mean"] }
+      }
+    }
+  ]
+}

@@ -90,14 +90,18 @@ Na aba **Sonda**:
 2. Na RB, crie um script que coleta as métricas e envia via `/tool fetch` (modelo pronto na própria aba) e agende no `/system scheduler` (ex.: a cada 30s).
 3. As leituras aparecem em segundos: **cards de status** (PPPoE, latências, perda…) e **gráficos de linha** ao longo do tempo.
 
-A ingestão é um `POST` para `/api/probe`, tolerante a **JSON**, **form** ou **query string**. Campos: `probe` (nome da sonda), `token`, `pppoe` (`up`/`down`) e quaisquer **métricas numéricas** (ex.: `latency_gateway_ms`, `loss_pct`, `jitter_ms`). Exemplo simples:
+A ingestão é um `POST` para `/api/probe`, tolerante a **JSON**, **form** ou **query string**. Campos: `probe` (nome da sonda), `token`, `pppoe` (`up`/`down`) e quaisquer **métricas numéricas** (ex.: `loss_bras`, `loss_core`, `latency_gateway_ms`). Exemplo simples:
 
 ```
 /tool fetch keep-result=no http-method=post http-data="" \
-  url="http://<IP-DA-VM>:8080/api/probe?token=SEU_TOKEN&probe=uberaba&pppoe=up&latency_gateway_ms=3.2&loss_pct=0"
+  url="http://<IP-DA-VM>:8080/api/probe?token=SEU_TOKEN&probe=uberaba&pppoe=up&loss_bras=0&loss_core=0"
 ```
 
-Se o token estiver ativo, POSTs sem o token correto são recusados (`401`). Quando uma sonda **para de enviar** ou o **PPPoE cai**, o portal avisa **uma vez** no Telegram (e outra ao voltar, com o tempo fora).
+> **RouterOS v6:** o `/tool fetch` **não envia corpo** em POST — por isso mande tudo na **query string** (como acima). E **configure o script pelo Winbox → System → Scripts**, não pelo terminal: no terminal o caractere `?` abre a ajuda e quebra a colagem da URL.
+
+A aba **Sonda** traz **KPIs** (sondas online, com perda, PPPoE down), **tiles de perda por destino** (coloridos), **gráficos de linha multidestino** e um botão para **apagar uma sonda ao vivo** que não está mais em uso.
+
+**Alertas no Telegram** (uma vez por transição): a sonda **parou de enviar** / **voltou** (com tempo fora), o **PPPoE caiu** / **voltou**, e **perda de pacotes por destino** ao **passar** e ao **normalizar** o limite (%) configurável na aba. Se o token estiver ativo, POSTs sem o token correto são recusados (`401`).
 
 ---
 
@@ -116,25 +120,34 @@ Se o token estiver ativo, POSTs sem o token correto são recusados (`401`). Quan
 
 ## 📈 Integração com Grafana (opcional)
 
-O portal já tem seu próprio painel, mas se quiser usar o Grafana:
+O portal já tem seus próprios painéis, mas se quiser usar o Grafana há **dois dashboards** prontos na pasta `grafana/`:
+
+| Arquivo | Dashboard |
+|---------|-----------|
+| `grafana/core-ospf-bfd.json` | 🛰️ **Core OSPF & BFD** — status das vizinhanças/sessões dos PEs |
+| `grafana/sonda.json` | 📡 **Sonda (Active Probing)** — PPPoE e perda por destino, com série temporal |
+
+Para cada um:
 
 1. Instale o plugin **Infinity** (`yesoreyeram-infinity-datasource`) no Grafana.
 2. Crie um **Data Source Infinity** e anote o **UID** dele.
-3. Abra `grafana/dashboard.json` deste repositório e substitua:
+3. Abra o `.json` e substitua:
    - `REPLACE_VM_IP` → o IP da sua VM (ex.: `10.0.0.5`)
    - `REPLACE_INFINITY_DATASOURCE_UID` → o UID do seu Data Source Infinity
-4. No Grafana: **Dashboards → Import** → suba o `dashboard.json`.
+4. No Grafana: **Dashboards → Import** → suba o arquivo.
 
-Os endpoints usados pelo Grafana (e pelo painel próprio):
+Os endpoints usados pelo Grafana (e pelos painéis próprios):
 
 | Endpoint | Conteúdo |
 |----------|----------|
-| `/api/summary` | Totais e disponibilidade (%) |
+| `/api/summary` | Totais e disponibilidade (%) — core |
 | `/api/ospf` | Vizinhos OSPF (achatado) |
 | `/api/bfd` | Sessões BFD (achatado, com interface) |
 | `/api/alarms` | Somente o que está fora do ar |
 | `/api/routers` | Lista de PEs |
 | `/api/grafana` | JSON completo (aninhado) |
+| `/api/probe/grafana` | Sondas: última leitura achatada por sonda |
+| `/api/probe/grafana/series?probe=X` | Sondas: série temporal (perda por destino) |
 | `/metrics` | Formato Prometheus |
 
 ---
@@ -168,7 +181,8 @@ telemetry-portal/
 ├── telemetry.service      # Unit do systemd (template)
 ├── templates/             # Páginas (login + abas)
 └── grafana/
-    └── dashboard.json     # Dashboard do Grafana (opcional)
+    ├── core-ospf-bfd.json # Dashboard Grafana: Core OSPF & BFD (opcional)
+    └── sonda.json         # Dashboard Grafana: Sonda / Active Probing (opcional)
 ```
 
 Arquivos gerados no primeiro run (não versionados): `telemetry.db`, `secret.key`, `venv/`.

@@ -15,6 +15,9 @@ import socket
 import concurrent.futures
 
 app = Flask(__name__)
+# Recarrega os templates a cada requisicao (ajustes de tela valem sem restart)
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.jinja_env.auto_reload = True
 
 # Diretorio base do app (para funcionar independente de onde for iniciado)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -76,6 +79,10 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS probe_status (
         probe TEXT PRIMARY KEY, last_ts REAL, online INTEGER,
         pppoe TEXT, since REAL)''')
+    # Estado de alarme por metrica (para detectar borda de PERDA por destino)
+    c.execute('''CREATE TABLE IF NOT EXISTS probe_metric_state (
+        probe TEXT, metric TEXT, alarmed INTEGER, since REAL, last_value REAL,
+        PRIMARY KEY (probe, metric))''')
 
     # Migracao: coluna 'since' (desde quando o vizinho esta no estado atual)
     cols = [row[1] for row in c.execute("PRAGMA table_info(neighbor_seen)").fetchall()]
@@ -308,10 +315,141 @@ def _probe_offline_after():
         return 120
 
 
-def _fmt_probe_event(probe, kind, pppoe=None, downtime=None):
+def _probe_loss_threshold():
+    """% de perda a partir da qual um destino e considerado em ALARME."""
+    try:
+        return max(1.0, float(get_setting('probe_loss_threshold', '20')))
+    except (ValueError, TypeError):
+        return 20.0
+
+
+def _probe_thresholds():
+    """Limites de alarme por familia de metrica (configuraveis no painel)."""
+    def g(key, default):
+        try:
+            return float(get_setting(key, str(default)))
+        except (ValueError, TypeError):
+            return float(default)
+    return {
+        "loss": g('probe_loss_threshold', 20),
+        "latency": g('probe_latency_threshold', 150),
+        "jitter": g('probe_jitter_threshold', 30),
+        "cpu": g('probe_cpu_threshold', 90),
+        "memfree": g('probe_memfree_min', 10),
+    }
+
+
+# Familias de metrica -> rotulo e unidade (exibicao + alertas)
+_FAMILY_LABEL = {"loss": "Perda", "latency": "Latencia", "jitter": "Jitter",
+                 "cpu": "CPU", "memfree": "Memoria livre", "bool": "Teste"}
+_FAMILY_UNIT = {"loss": "%", "latency": "ms", "jitter": "ms",
+                "cpu": "%", "memfree": "%", "bool": ""}
+
+
+def _metric_family(key):
+    """Classifica a metrica numa familia. None = so informativa (sem alarme)."""
+    if key.startswith('loss'):
+        return 'loss'
+    if key.startswith('rtt') or key.startswith('latency'):
+        return 'latency'
+    if key.startswith('jitter'):
+        return 'jitter'
+    if key.startswith('cpu'):
+        return 'cpu'
+    if key.startswith('mem_free') or key == 'memfree':
+        return 'memfree'
+    if key in ('dns_ok', 'http_ok') or key.startswith('up_') or key.startswith('reach'):
+        return 'bool'
+    return None
+
+
+def _metric_is_bad(key, value, thr):
+    """True/False se a metrica esta ruim; None se nao e alertavel."""
+    fam = _metric_family(key)
+    if fam is None or value is None:
+        return None
+    if fam == 'loss':
+        return value >= thr['loss']
+    if fam == 'latency':
+        return value >= thr['latency']
+    if fam == 'jitter':
+        return value >= thr['jitter']
+    if fam == 'cpu':
+        return value >= thr['cpu']
+    if fam == 'memfree':
+        return value <= thr['memfree']
+    if fam == 'bool':
+        return value == 0
+    return None
+
+
+# Rotulos amigaveis para itens conhecidos (destinos e testes)
+_PROBE_DEST_LABELS = {
+    "loss_bras": "BRAS", "loss_core": "Core (Sede)", "loss_google": "Google",
+    "loss_cloudflare": "Cloudflare", "loss_facebook": "Facebook", "loss_dns2": "DNS 2",
+    "rtt_bras": "BRAS", "rtt_core": "Core (Sede)", "rtt_google": "Google",
+    "rtt_cloudflare": "Cloudflare", "rtt_dns2": "DNS 2",
+    "jitter_bras": "BRAS", "jitter_core": "Core (Sede)", "jitter_google": "Google",
+    "jitter_cloudflare": "Cloudflare", "jitter_dns2": "DNS 2",
+    "cpu": "CPU", "mem_free": "Memoria livre", "uptime_s": "Uptime",
+    "dns_ok": "DNS", "http_ok": "HTTP",
+}
+
+
+def _probe_metric_label(metric):
+    if metric in _PROBE_DEST_LABELS:
+        return _PROBE_DEST_LABELS[metric]
+    base = metric
+    for pre in ("loss_", "rtt_", "latency_", "jitter_", "up_", "reach_"):
+        if base.startswith(pre):
+            base = base[len(pre):]
+            break
+    return base.replace("_", " ").upper()
+
+
+def _fmt_probe_event(probe, kind, pppoe=None, downtime=None, dest=None, value=None,
+                     family=None, unit=None):
     """Monta a mensagem de sonda para o Telegram (borda unica)."""
     quando = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    if kind == 'offline':
+    fam = _FAMILY_LABEL.get(family, family or 'Metrica')
+    unit = unit if unit is not None else _FAMILY_UNIT.get(family, '')
+    if kind == 'metric':
+        if family == 'bool':
+            linhas = [
+                f"🔴 <b>TESTE FALHOU</b> — Sonda",
+                f"Sonda: <b>{probe}</b>",
+                f"Teste: <b>{dest}</b>",
+                f"Resultado: <b>FALHOU</b>",
+                f"Quando: {quando}",
+            ]
+        else:
+            linhas = [
+                f"🔴 <b>{fam.upper()} FORA DO LIMITE</b> — Sonda",
+                f"Sonda: <b>{probe}</b>",
+                f"Item: <b>{dest}</b>",
+                f"{fam}: <b>{value:.0f}{unit}</b>",
+                f"Quando: {quando}",
+            ]
+    elif kind == 'metric_ok':
+        if family == 'bool':
+            linhas = [
+                f"🟢 <b>TESTE OK</b> — Sonda",
+                f"Sonda: <b>{probe}</b>",
+                f"Teste: <b>{dest}</b>",
+                f"Resultado: OK",
+                f"Quando: {quando}",
+            ]
+        else:
+            linhas = [
+                f"🟢 <b>{fam.upper()} NORMALIZADO</b> — Sonda",
+                f"Sonda: <b>{probe}</b>",
+                f"Item: <b>{dest}</b>",
+                f"{fam} agora: {value:.0f}{unit}",
+                f"Quando: {quando}",
+            ]
+        if downtime:
+            linhas.append(f"Ficou fora do limite por: {_fmt_duration(downtime)}")
+    elif kind == 'offline':
         linhas = [
             f"🔴 <b>SONDA SEM DADOS</b>",
             f"Sonda: <b>{probe}</b>",
@@ -351,10 +489,13 @@ def _fmt_probe_event(probe, kind, pppoe=None, downtime=None):
 _probe_lock = threading.Lock()
 
 
-def _probe_ingest_update(probe, pppoe):
+def _probe_ingest_update(probe, pppoe, metrics=None):
     """Atualiza o estado da sonda ao receber dados e detecta transicoes de
-    borda (offline->online e PPPoE up<->down) para notificar UMA vez."""
+    borda para notificar UMA vez: offline<->online, PPPoE up<->down e
+    PERDA por destino (loss_* cruzando o limite configurado)."""
     now = time.time()
+    metrics = metrics or {}
+    thr = _probe_thresholds()
     msgs = []
     with _probe_lock:
         conn = sqlite3.connect(DB_FILE)
@@ -381,6 +522,36 @@ def _probe_ingest_update(probe, pppoe):
                     msgs.append(_fmt_probe_event(probe, 'pppoe_up'))
             c.execute("UPDATE probe_status SET last_ts=?, online=1, pppoe=?, since=? WHERE probe=?",
                       (now, pppoe or old_pppoe, new_since, probe))
+
+        # --- alertas por metrica, qualquer familia (deteccao de borda) ---
+        for metric, value in metrics.items():
+            bad = _metric_is_bad(metric, value, thr)
+            if bad is None:
+                continue  # metrica so informativa (ex.: uptime) -> nao alerta
+            fam = _metric_family(metric)
+            prev = c.execute("SELECT alarmed, since FROM probe_metric_state WHERE probe=? AND metric=?",
+                             (probe, metric)).fetchone()
+            if prev is None:
+                # primeira vez: so registra, sem notificar (evita spam no boot)
+                c.execute("INSERT INTO probe_metric_state (probe, metric, alarmed, since, last_value) "
+                          "VALUES (?, ?, ?, ?, ?)", (probe, metric, 1 if bad else 0, now, value))
+            else:
+                was, psince = prev
+                psince = psince or now
+                if bad and not was:
+                    msgs.append(_fmt_probe_event(probe, 'metric',
+                                dest=_probe_metric_label(metric), value=value, family=fam))
+                    c.execute("UPDATE probe_metric_state SET alarmed=1, since=?, last_value=? "
+                              "WHERE probe=? AND metric=?", (now, value, probe, metric))
+                elif (not bad) and was:
+                    msgs.append(_fmt_probe_event(probe, 'metric_ok',
+                                dest=_probe_metric_label(metric), value=value, family=fam,
+                                downtime=now - psince))
+                    c.execute("UPDATE probe_metric_state SET alarmed=0, since=?, last_value=? "
+                              "WHERE probe=? AND metric=?", (now, value, probe, metric))
+                else:
+                    c.execute("UPDATE probe_metric_state SET last_value=? "
+                              "WHERE probe=? AND metric=?", (value, probe, metric))
         conn.commit()
         conn.close()
     for m in msgs:
@@ -565,10 +736,16 @@ def telegram_test():
 @app.route('/sonda')
 @login_required
 def sonda():
+    thr = _probe_thresholds()
     cfg = {
         "token": get_probe_token(),
         "auth_enabled": get_setting('probe_auth_enabled', '1') == '1',
         "offline_after": _probe_offline_after(),
+        "loss_threshold": int(thr["loss"]),
+        "latency_threshold": int(thr["latency"]),
+        "jitter_threshold": int(thr["jitter"]),
+        "cpu_threshold": int(thr["cpu"]),
+        "memfree_min": int(thr["memfree"]),
         "ingest_url": f"http://{get_local_ip()}:8080/api/probe",
     }
     return render_template('page_sonda.html', active='sonda', cfg=cfg)
@@ -587,9 +764,41 @@ def sonda_save():
     except (ValueError, TypeError):
         after = 120
     set_setting('probe_offline_after', str(after))
-    log_action('Salvou config da Sonda', f'auth={auth_enabled}, offline_after={after}s')
+    def _save_num(field, key, default, lo=1):
+        try:
+            v = max(lo, int(float(request.form.get(field, str(default)))))
+        except (ValueError, TypeError):
+            v = default
+        set_setting(key, str(v))
+        return v
+    loss_thr = _save_num('loss_threshold', 'probe_loss_threshold', 20)
+    lat_thr = _save_num('latency_threshold', 'probe_latency_threshold', 150)
+    jit_thr = _save_num('jitter_threshold', 'probe_jitter_threshold', 30)
+    cpu_thr = _save_num('cpu_threshold', 'probe_cpu_threshold', 90)
+    mem_min = _save_num('memfree_min', 'probe_memfree_min', 10)
+    log_action('Salvou config da Sonda',
+               f'auth={auth_enabled}, offline={after}s, loss>={loss_thr}%, '
+               f'lat>={lat_thr}ms, jitter>={jit_thr}ms, cpu>={cpu_thr}%, memfree<={mem_min}%')
     flash('Configuração da Sonda salva.')
     return redirect(url_for('sonda'))
+
+
+@app.route('/sonda/forget', methods=['POST'])
+@login_required
+def sonda_forget():
+    """Apaga uma sonda ao vivo: leituras, estado e alarmes."""
+    probe = request.form.get('probe', '').strip()
+    if not probe:
+        return jsonify({"ok": False, "error": "probe vazio"}), 400
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("DELETE FROM probe_samples WHERE probe=?", (probe,))
+    c.execute("DELETE FROM probe_status WHERE probe=?", (probe,))
+    c.execute("DELETE FROM probe_metric_state WHERE probe=?", (probe,))
+    conn.commit()
+    conn.close()
+    log_action('Esqueceu sonda', probe)
+    return jsonify({"ok": True, "probe": probe})
 
 
 @app.route('/sonda/regenerate-token', methods=['POST'])
@@ -623,8 +832,8 @@ def api_probe_ingest():
     conn.commit()
     conn.close()
 
-    # detecta borda (volta de offline / PPPoE) e notifica uma vez
-    _probe_ingest_update(p["probe"], p["pppoe"])
+    # detecta borda (offline / PPPoE / perda por destino) e notifica uma vez
+    _probe_ingest_update(p["probe"], p["pppoe"], p["metrics"])
 
     return jsonify({"ok": True, "probe": p["probe"], "metrics": len(p["metrics"])})
 
@@ -634,6 +843,7 @@ def api_probe_ingest():
 def api_probe_samples():
     """Alimenta os cards e graficos da aba Sonda (com auto-refresh no front)."""
     limite = _probe_offline_after()
+    thr = _probe_thresholds()
     now = time.time()
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
@@ -641,6 +851,8 @@ def api_probe_samples():
         "SELECT DISTINCT probe FROM probe_samples ORDER BY probe").fetchall()]
     status = {r[0]: r for r in c.execute(
         "SELECT probe, last_ts, online, pppoe FROM probe_status").fetchall()}
+    counts = {r[0]: r[1] for r in c.execute(
+        "SELECT probe, COUNT(*) FROM probe_samples GROUP BY probe").fetchall()}
 
     out = []
     for probe in probes:
@@ -669,17 +881,118 @@ def api_probe_samples():
         last_ts = st[1] if st else (rows[-1][0] if rows else 0)
         age = now - last_ts if last_ts else None
         online = bool(age is not None and age <= limite)
+        # itens em alarme agora (qualquer familia fora do limite na ultima leitura)
+        alarms = sorted(k for k, v in last_metrics.items()
+                        if _metric_is_bad(k, v, thr) is True)
         out.append({
             "probe": probe,
             "online": online,
             "pppoe": st[3] if st else last_pppoe,
             "last_ts": last_ts,
             "age_s": round(age) if age is not None else None,
+            "samples": counts.get(probe, len(rows)),
+            "alarms": alarms,
             "last": last_metrics,
             "series": series,
         })
     conn.close()
-    return jsonify({"offline_after": limite, "probes": out})
+    return jsonify({
+        "offline_after": limite,
+        "loss_threshold": int(thr["loss"]),
+        "thresholds": {k: int(v) for k, v in thr.items()},
+        "probes": out,
+    })
+
+
+def _probe_latest(c):
+    """Ultima leitura de cada sonda: {probe: (ts, pppoe, metrics)}."""
+    out = {}
+    for (probe,) in c.execute("SELECT DISTINCT probe FROM probe_samples").fetchall():
+        row = c.execute("SELECT ts, payload FROM probe_samples WHERE probe=? ORDER BY ts DESC LIMIT 1",
+                        (probe,)).fetchone()
+        if not row:
+            continue
+        try:
+            d = json.loads(row[1])
+        except Exception:
+            d = {}
+        out[probe] = (row[0], d.get("pppoe", "") or "", d.get("metrics") or {})
+    return out
+
+
+@app.route('/api/probe/grafana')
+def api_probe_grafana():
+    """PUBLICO (Grafana): ultima leitura achatada por sonda."""
+    limite = _probe_offline_after()
+    thr = _probe_thresholds()
+    now = time.time()
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    status = {r[0]: r for r in c.execute(
+        "SELECT probe, last_ts, online, pppoe FROM probe_status").fetchall()}
+    latest = _probe_latest(c)
+    conn.close()
+    rows = []
+    for probe, (ts, pppoe, metrics) in latest.items():
+        st = status.get(probe)
+        last_ts = (st[1] if st else ts) or ts
+        age = now - last_ts if last_ts else 0
+        online = 1 if age <= limite else 0
+        losses = [v for k, v in metrics.items() if k.startswith('loss') and v is not None]
+        worst = max(losses) if losses else 0
+        bad_items = [k for k, v in metrics.items() if _metric_is_bad(k, v, thr) is True]
+        row = {
+            "probe": probe,
+            "pppoe": (st[3] if st and st[3] else pppoe) or "n/d",
+            "online": online,
+            "status": "Online" if online else "Offline",
+            "age_s": round(age),
+            "worst_loss": round(worst, 1),
+            "alarm": 1 if bad_items else 0,
+            "alarm_count": len(bad_items),
+        }
+        for k, v in metrics.items():
+            row[k] = v
+        rows.append(row)
+    rows.sort(key=lambda r: r["probe"])
+    return jsonify(rows)
+
+
+@app.route('/api/probe/grafana/series')
+def api_probe_grafana_series():
+    """PUBLICO (Grafana): serie temporal (formato largo) de uma sonda.
+    Colunas = time (epoch ms) + rotulo de cada item. ?probe=NOME e ?type=loss|latency|jitter."""
+    probe = (request.args.get('probe') or '').strip()
+    fam = (request.args.get('type') or 'loss').strip().lower()
+    if fam not in ('loss', 'latency', 'jitter', 'health'):
+        fam = 'loss'
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    if not probe or probe in ('All', '$__all', '${SONDA}'):
+        r = c.execute("SELECT probe FROM probe_samples ORDER BY ts DESC LIMIT 1").fetchone()
+        probe = r[0] if r else ''
+    rows = c.execute("SELECT ts, payload FROM probe_samples WHERE probe=? ORDER BY ts DESC LIMIT 300",
+                     (probe,)).fetchall()
+    conn.close()
+    out = []
+    for ts, payload in reversed(rows):
+        try:
+            d = json.loads(payload)
+        except Exception:
+            continue
+        point = {"time": int(ts * 1000)}
+        metrics = d.get("metrics") or {}
+        if fam == 'health':
+            if metrics.get('cpu') is not None:
+                point["CPU"] = metrics['cpu']
+            if metrics.get('mem_free') is not None:
+                point["Mem livre"] = metrics['mem_free']
+        else:
+            for k, v in metrics.items():
+                if v is not None and _metric_family(k) == fam:
+                    point[_probe_metric_label(k)] = v
+        out.append(point)
+    return jsonify(out)
 
 
 @app.route('/router/add', methods=['POST'])
