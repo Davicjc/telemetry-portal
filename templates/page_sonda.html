@@ -1,169 +1,184 @@
 {% extends "base.html" %}
 {% block title %}Sonda - Telemetry Portal{% endblock %}
+{% block eyebrow %}Active Probing{% endblock %}
+{% block heading %}Sonda{% endblock %}
 
 {% block content %}
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  tailwind.config = { corePlugins: { preflight: false }, theme: { extend: { fontFamily: { sans: ['Outfit','sans-serif'] } } } };
+  // Remapeia a paleta p/ o tema do portal (shadcn dark + violeta): blue→violet, slate→zinc.
+  tailwind.config = { corePlugins: { preflight: false }, theme: { extend: {
+    fontFamily: { sans: ['Inter','system-ui','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+    colors: {
+      blue:  { 300:'#c4b5fd', 400:'#a78bfa', 500:'#8b5cf6', 600:'#7c3aed', 700:'#6d28d9' },
+      slate: { 200:'#e4e4e7', 300:'#d4d4d8', 400:'#a1a1aa', 500:'#71717a', 600:'#52525b', 700:'#3f3f46', 800:'#18181b', 900:'#0c0c0e' },
+    },
+  } } };
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-  <!-- CONFIG -->
-  <div class="rounded-2xl border border-white/10 bg-slate-800/60 backdrop-blur p-6">
-    <h2 class="text-lg font-semibold mb-1">📡 Configuração da Sonda</h2>
-    <p class="text-slate-400 text-sm mb-4">
-      A sonda (RB750Gr3) roda uma bateria de testes (perda, latência, jitter, DNS, HTTP, saúde) e
-      envia para a URL abaixo. O portal recebe, mostra e <b class="text-slate-200">alerta no Telegram</b> por métrica.
-    </p>
+<!-- Abas da Sonda -->
+<div class="seg" id="sonda-tabs" style="margin-bottom: 22px;">
+  <button class="active" data-tab="live">📊 Ao vivo</button>
+  <button data-tab="config">⚙️ Configuração</button>
+  <button data-tab="guide">📖 Como configurar</button>
+</div>
 
-    <label class="block text-slate-400 text-xs mb-1">URL de ingestão</label>
-    <div class="flex gap-2 mb-4">
-      <input id="ingest_url" value="{{ cfg.ingest_url }}" readonly
-             class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-slate-200 font-mono text-sm outline-none">
-      <button type="button" onclick="copyVal('ingest_url', this)"
-              class="px-3 py-2 rounded-lg bg-slate-600 hover:bg-slate-500 text-sm font-semibold whitespace-nowrap">Copiar</button>
-    </div>
+<!-- ===================== TAB: AO VIVO ===================== -->
+<section id="tab-live" class="stab-panel">
+  <div id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5"></div>
 
-    <form action="{{ url_for('sonda_save') }}" method="POST" class="space-y-3">
-      <label class="flex items-center gap-3 cursor-pointer select-none">
-        <input type="checkbox" name="auth_enabled" {% if cfg.auth_enabled %}checked{% endif %} class="w-5 h-5 accent-blue-500">
-        <span class="text-slate-200">Exigir token (recomendado)</span>
-      </label>
-      <div>
-        <label class="block text-slate-400 text-xs mb-1">Token da sonda</label>
-        <div class="flex gap-2">
-          <input id="token" name="token" value="{{ cfg.token }}" autocomplete="off"
-                 class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-slate-200 font-mono text-sm outline-none focus:border-blue-500">
-          <button type="button" onclick="copyVal('token', this)" class="px-3 py-2 rounded-lg bg-slate-600 hover:bg-slate-500 text-sm font-semibold">Copiar</button>
-        </div>
-      </div>
-
-      <div class="text-slate-400 text-xs pt-1 font-semibold uppercase tracking-wide">Limites de alarme</div>
-      <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div><label class="block text-slate-400 text-xs mb-1">Perda ≥ (%)</label>
-          <input type="number" name="loss_threshold" value="{{ cfg.loss_threshold }}" min="1" max="100" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
-        <div><label class="block text-slate-400 text-xs mb-1">Latência ≥ (ms)</label>
-          <input type="number" name="latency_threshold" value="{{ cfg.latency_threshold }}" min="1" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
-        <div><label class="block text-slate-400 text-xs mb-1">Jitter ≥ (ms)</label>
-          <input type="number" name="jitter_threshold" value="{{ cfg.jitter_threshold }}" min="1" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
-        <div><label class="block text-slate-400 text-xs mb-1">CPU ≥ (%)</label>
-          <input type="number" name="cpu_threshold" value="{{ cfg.cpu_threshold }}" min="1" max="100" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
-        <div><label class="block text-slate-400 text-xs mb-1">Mem. livre ≤ (%)</label>
-          <input type="number" name="memfree_min" value="{{ cfg.memfree_min }}" min="1" max="100" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
-        <div><label class="block text-slate-400 text-xs mb-1">Offline após (s)</label>
-          <input type="number" name="offline_after" value="{{ cfg.offline_after }}" min="15" step="5" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
-      </div>
-
-      <button type="submit" class="w-full py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 font-semibold transition">Salvar configuração</button>
-    </form>
-    <form action="{{ url_for('sonda_regenerate_token') }}" method="POST" class="mt-3"
-          onsubmit="return confirm('Gerar um novo token? A RB para de ser aceita até atualizar o token nela.');">
-      <button type="submit" class="w-full py-2.5 rounded-lg border border-red-500/50 text-red-400 hover:bg-red-500 hover:text-white font-semibold transition">Regenerar token</button>
-    </form>
-    <p class="text-slate-400 text-xs mt-4">Alertas no Telegram (uma vez por transição): sonda caiu/voltou, PPPoE, e cada teste ao <b class="text-slate-200">passar/normalizar</b> o limite (perda, latência, jitter, CPU, memória, DNS, HTTP).</p>
+  <div class="toolbar" style="margin-bottom: 8px;">
+    <div id="probe-filter" class="seg is-hidden"></div>
+    <div class="grow"></div>
+    <span class="badge2 b-mut2"><span class="dot" style="background:var(--ok)"></span><span id="updated">carregando…</span></span>
   </div>
 
-  <!-- GUIA -->
-  <div class="rounded-2xl border border-white/10 bg-slate-800/60 backdrop-blur p-6">
-    <h2 class="text-lg font-semibold mb-4">📖 Como configurar a RB750Gr3 do zero</h2>
-    <div class="space-y-3 text-sm">
-      <div class="flex gap-3 rounded-xl bg-black/20 border border-white/10 p-3">
-        <span class="shrink-0 w-6 h-6 rounded-full bg-blue-500 text-white grid place-items-center font-bold text-xs">1</span>
-        <div>Copie a <b>URL</b> (e o <b>Token</b>, se ligado) ali do lado.</div>
+  <div id="probes"></div>
+</section>
+
+<!-- ===================== TAB: CONFIGURAÇÃO ===================== -->
+<section id="tab-config" class="stab-panel is-hidden">
+  <div class="grid" style="align-items:start;">
+    <div class="card">
+      <div class="card-head">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg></div>
+        <div><h2>Configuração da sonda</h2><div class="sub">URL de ingestão, token e limites de alarme</div></div>
       </div>
-      <div class="flex gap-3 rounded-xl bg-black/20 border border-white/10 p-3">
-        <span class="shrink-0 w-6 h-6 rounded-full bg-blue-500 text-white grid place-items-center font-bold text-xs">2</span>
-        <div><b class="text-amber-300">⚠️ Use o Winbox, NÃO o terminal.</b>
-          <div class="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-200 p-2 text-xs">No terminal o <code class="text-blue-300">?</code> abre a ajuda e quebra a URL. Configure por <b>Winbox → System → Scripts</b> (campo <i>Source</i>).</div>
+
+      <label class="block text-slate-400 text-xs mb-1">URL de ingestão</label>
+      <div class="flex gap-2 mb-4">
+        <input id="ingest_url" value="{{ cfg.ingest_url }}" readonly
+               class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-slate-200 font-mono text-sm outline-none">
+        <button type="button" onclick="copyVal('ingest_url', this)" class="btn btn-soft btn-sm whitespace-nowrap">Copiar</button>
+      </div>
+
+      <form action="{{ url_for('sonda_save') }}" method="POST" class="space-y-3">
+        <label class="switch2" style="margin-bottom:4px;">
+          <input type="checkbox" name="auth_enabled" {% if cfg.auth_enabled %}checked{% endif %}>
+          <span class="track"></span>
+          <span class="text-slate-200" style="font-size:14px;font-weight:500;">Exigir token (recomendado)</span>
+        </label>
+        <div>
+          <label class="block text-slate-400 text-xs mb-1">Token da sonda</label>
+          <div class="flex gap-2">
+            <input id="token" name="token" value="{{ cfg.token }}" autocomplete="off"
+                   class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-slate-200 font-mono text-sm outline-none focus:border-blue-500">
+            <button type="button" onclick="copyVal('token', this)" class="btn btn-soft btn-sm">Copiar</button>
+          </div>
         </div>
+
+        <div class="divlabel" style="margin:14px 0 10px;">Limites de alarme</div>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <div><label class="block text-slate-400 text-xs mb-1">Perda ≥ (%)</label>
+            <input type="number" name="loss_threshold" value="{{ cfg.loss_threshold }}" min="1" max="100" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
+          <div><label class="block text-slate-400 text-xs mb-1">Latência ≥ (ms)</label>
+            <input type="number" name="latency_threshold" value="{{ cfg.latency_threshold }}" min="1" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
+          <div><label class="block text-slate-400 text-xs mb-1">Jitter ≥ (ms)</label>
+            <input type="number" name="jitter_threshold" value="{{ cfg.jitter_threshold }}" min="1" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
+          <div><label class="block text-slate-400 text-xs mb-1">CPU ≥ (%)</label>
+            <input type="number" name="cpu_threshold" value="{{ cfg.cpu_threshold }}" min="1" max="100" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
+          <div><label class="block text-slate-400 text-xs mb-1">Mem. livre ≤ (%)</label>
+            <input type="number" name="memfree_min" value="{{ cfg.memfree_min }}" min="1" max="100" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
+          <div><label class="block text-slate-400 text-xs mb-1">Offline após (s)</label>
+            <input type="number" name="offline_after" value="{{ cfg.offline_after }}" min="15" step="5" class="w-full px-3 py-2 rounded-lg bg-black/25 border border-white/10 text-white outline-none focus:border-blue-500"></div>
+        </div>
+
+        <button type="submit" class="btn" style="width:100%; margin-top:6px;">Salvar configuração</button>
+      </form>
+      <form action="{{ url_for('sonda_regenerate_token') }}" method="POST" class="mt-3"
+            onsubmit="return confirm('Gerar um novo token? A RB para de ser aceita até atualizar o token nela.');">
+        <button type="submit" class="btn btn-danger" style="width:100%;">Regenerar token</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <div><h2>O que é alertado</h2><div class="sub">Notificações no Telegram</div></div>
       </div>
-      <div class="flex gap-3 rounded-xl bg-black/20 border border-white/10 p-3">
-        <span class="shrink-0 w-6 h-6 rounded-full bg-blue-500 text-white grid place-items-center font-bold text-xs">3</span>
-        <div class="min-w-0"><b>System → Scripts → “+”</b> · Name <code class="text-blue-300">sonda-telemetry</code> · cole no <b>Source</b>:
-<pre class="mt-2 rounded-lg bg-black/40 border border-white/10 p-3 overflow-x-auto text-xs text-slate-300 whitespace-pre"># === SONDA NOC AUDICOM (RouterOS v6) — bateria de testes ===
+      <p class="hint" style="margin-bottom:14px;">Cada aviso é enviado <b style="color:var(--text-main)">uma vez por transição</b> (ao passar o limite e ao normalizar) — sem spam.</p>
+      <div class="grid grid-cols-2 gap-2">
+        <span class="badge2 b-vio2">📉 Perda</span>
+        <span class="badge2 b-vio2">⏱️ Latência</span>
+        <span class="badge2 b-vio2">📊 Jitter</span>
+        <span class="badge2 b-vio2">🖥️ CPU</span>
+        <span class="badge2 b-vio2">💾 Memória</span>
+        <span class="badge2 b-vio2">🧪 DNS / HTTP</span>
+        <span class="badge2 b-vio2">🔌 PPPoE up/down</span>
+        <span class="badge2 b-vio2">🛰️ Sonda caiu/voltou</span>
+      </div>
+      <p class="hint" style="margin-top:14px;">Ajuste os limites ao lado. Com token exigido, POSTs sem o token correto são recusados (<code>401</code>).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== TAB: COMO CONFIGURAR ===================== -->
+<section id="tab-guide" class="stab-panel is-hidden">
+  <div class="card">
+    <div class="card-head">
+      <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div>
+      <div><h2>Como configurar a RB750Gr3 do zero</h2><div class="sub">RouterOS 6.49 · sem as-value</div></div>
+    </div>
+    <div class="steps">
+      <div class="step">Copie a <b>URL</b> (e o <b>Token</b>, se ligado) na aba <b>Configuração</b>.</div>
+      <div class="step"><b style="color:#fdba74">⚠️ Use o Winbox, NÃO o terminal.</b> No terminal o <code>?</code> abre a ajuda e quebra a URL. Configure por <b>Winbox → System → Scripts</b> (campo <i>Source</i>).</div>
+      <div class="step"><b>System → Scripts → “+”</b> · Name <code>sonda-telemetry</code> · cole no <b>Source</b>:
+<pre class="mt-3 rounded-lg bg-black/40 border border-white/10 p-3 overflow-x-auto text-xs text-slate-300 whitespace-pre"># === SONDA NOC AUDICOM — bateria completa (RouterOS 6.49, sem as-value) ===
+# Latência: :execute joga o /ping num arquivo e extraímos o avg-rtt por texto.
 :local probe "uberaba"
-:local url "{{ cfg.ingest_url }}"
-:local count 5
-:local addrs {"198.18.255.45"; "198.18.255.0"; "8.8.8.8"; "1.1.1.1"; "208.67.222.222"}
-:local names {"bras"; "core"; "google"; "cloudflare"; "dns2"}
-
-:local qs ("probe=" . $probe)
-
-# PPPoE (detecta a interface automaticamente)
+:local pingCount 5
+:do { :execute script="/ping 198.18.255.45 count=5" file="pr1" } on-error={}
+:do { :execute script="/ping 198.18.255.0 count=5" file="pr2" } on-error={}
+:do { :execute script="/ping 8.8.8.8 count=5" file="pr3" } on-error={}
+:do { :execute script="/ping 1.1.1.1 count=5" file="pr4" } on-error={}
+:do { :execute script="/ping 57.144.232.1 count=5" file="pr5" } on-error={}
+:local r1 [/ping 198.18.255.45 count=$pingCount]
+:local r2 [/ping 198.18.255.0 count=$pingCount]
+:local r3 [/ping 8.8.8.8 count=$pingCount]
+:local r4 [/ping 1.1.1.1 count=$pingCount]
+:local r5 [/ping 57.144.232.1 count=$pingCount]
+:local l1 ((($pingCount - $r1) * 100) / $pingCount)
+:local l2 ((($pingCount - $r2) * 100) / $pingCount)
+:local l3 ((($pingCount - $r3) * 100) / $pingCount)
+:local l4 ((($pingCount - $r4) * 100) / $pingCount)
+:local l5 ((($pingCount - $r5) * 100) / $pingCount)
 :local pppoe "down"
 :foreach i in=[/interface pppoe-client find] do={ :if ([/interface pppoe-client get $i running] = true) do={ :set pppoe "up" } }
-:set qs ($qs . "&pppoe=" . $pppoe)
-
-# Perda (confiável) + Latência/Jitter (best-effort via as-value)
-:local i 0
-:while ($i < [:len $addrs]) do={
-  :local a [:pick $addrs $i]
-  :local nm [:pick $names $i]
-  :local recv 0; :local sum 0; :local mn 100000; :local mx 0; :local ok 0
-  :do {
-    :foreach p in=[/ping $a count=$count as-value] do={
-      :set ok 1
-      :local t ($p->"time")
-      :if ([:typeof $t] != "nothing") do={
-        :local ms ([:tonum $t] / 1000000)
-        :set recv ($recv + 1); :set sum ($sum + $ms)
-        :if ($ms < $mn) do={ :set mn $ms }
-        :if ($ms > $mx) do={ :set mx $ms }
-      }
-    }
-  } on-error={ :set ok 0 }
-  :if ($ok = 0) do={ :set recv [/ping $a count=$count] }
-  :local loss (100 - ($recv * 100 / $count))
-  :local rtt 0; :local jit 0
-  :if (($recv > 0) and ($sum > 0)) do={ :set rtt ($sum / $recv); :set jit ($mx - $mn) }
-  :set qs ($qs . "&loss_" . $nm . "=" . $loss . "&rtt_" . $nm . "=" . $rtt . "&jitter_" . $nm . "=" . $jit)
-  :set i ($i + 1)
-}
-
-# Saúde da RB (confiável)
 :local cpu [/system resource get cpu-load]
 :local tot [/system resource get total-memory]
 :local fre [/system resource get free-memory]
 :local memp 0
 :if ($tot > 0) do={ :set memp (($fre * 100) / $tot) }
-:local up ([:tonum [/system resource get uptime]] / 1000000000)
-:set qs ($qs . "&cpu=" . $cpu . "&mem_free=" . $memp . "&uptime_s=" . $up)
-
-# DNS e HTTP (teste de internet)
 :local dnsok 0
-:do { [:resolve "google.com"]; :set dnsok 1 } on-error={ :set dnsok 0 }
+:do { :local x [:resolve "google.com"]; :set dnsok 1 } on-error={ :set dnsok 0 }
 :local httpok 0
-:do { /tool fetch url="http://clients3.google.com/generate_204" mode=http keep-result=no; :set httpok 1 } on-error={ :set httpok 0 }
-:set qs ($qs . "&dns_ok=" . $dnsok . "&http_ok=" . $httpok)
-
-# Envio (tudo na URL — o v6 não manda corpo em POST)
-:do { /tool fetch url=($url . "?" . $qs) http-method=post http-data="" keep-result=no } on-error={ :log warning "Sonda NOC: falha ao enviar" }</pre>
-          <span class="text-slate-400 text-xs">Token ligado? Adicione <code class="text-blue-300">:set qs ($qs . "&amp;token=SEU_TOKEN")</code> antes do envio.</span>
-        </div>
+:do { /tool fetch url="http://clients3.google.com/generate_204" keep-result=no; :set httpok 1 } on-error={ :set httpok 0 }
+:local rtt1 0
+:local rtt2 0
+:local rtt3 0
+:local rtt4 0
+:local rtt5 0
+:do { :local c [/file get [/file find where name~"pr1"] contents]; :local a [:find $c "avg-rtt="]; :if ([:typeof $a]!="nil") do={ :local s [:pick $c ($a+8) [:len $c]]; :local m [:find $s "ms"]; :if ([:typeof $m]!="nil") do={ :set rtt1 [:pick $s 0 $m] } } } on-error={}
+:do { :local c [/file get [/file find where name~"pr2"] contents]; :local a [:find $c "avg-rtt="]; :if ([:typeof $a]!="nil") do={ :local s [:pick $c ($a+8) [:len $c]]; :local m [:find $s "ms"]; :if ([:typeof $m]!="nil") do={ :set rtt2 [:pick $s 0 $m] } } } on-error={}
+:do { :local c [/file get [/file find where name~"pr3"] contents]; :local a [:find $c "avg-rtt="]; :if ([:typeof $a]!="nil") do={ :local s [:pick $c ($a+8) [:len $c]]; :local m [:find $s "ms"]; :if ([:typeof $m]!="nil") do={ :set rtt3 [:pick $s 0 $m] } } } on-error={}
+:do { :local c [/file get [/file find where name~"pr4"] contents]; :local a [:find $c "avg-rtt="]; :if ([:typeof $a]!="nil") do={ :local s [:pick $c ($a+8) [:len $c]]; :local m [:find $s "ms"]; :if ([:typeof $m]!="nil") do={ :set rtt4 [:pick $s 0 $m] } } } on-error={}
+:do { :local c [/file get [/file find where name~"pr5"] contents]; :local a [:find $c "avg-rtt="]; :if ([:typeof $a]!="nil") do={ :local s [:pick $c ($a+8) [:len $c]]; :local m [:find $s "ms"]; :if ([:typeof $m]!="nil") do={ :set rtt5 [:pick $s 0 $m] } } } on-error={}
+:local url "http://172.21.1.116:8080/api/probe?probe=$probe&pppoe=$pppoe&loss_bras=$l1&loss_core=$l2&loss_google=$l3&loss_cloudflare=$l4&loss_facebook=$l5&cpu=$cpu&mem_free=$memp&dns_ok=$dnsok&http_ok=$httpok&rtt_bras=$rtt1&rtt_core=$rtt2&rtt_google=$rtt3&rtt_cloudflare=$rtt4&rtt_facebook=$rtt5"
+:do { /tool fetch url=$url http-method=post http-data="" keep-result=no } on-error={ :log warning "Sonda NOC: falha ao enviar" }</pre>
       </div>
-      <div class="flex gap-3 rounded-xl bg-black/20 border border-white/10 p-3">
-        <span class="shrink-0 w-6 h-6 rounded-full bg-blue-500 text-white grid place-items-center font-bold text-xs">4</span>
-        <div><b>System → Scheduler → “+”</b> · Interval <code class="text-blue-300">00:01:00</code> · On Event <code class="text-blue-300">/system script run sonda-telemetry</code></div>
-      </div>
-      <div class="flex gap-3 rounded-xl bg-black/20 border border-white/10 p-3">
-        <span class="shrink-0 w-6 h-6 rounded-full bg-blue-500 text-white grid place-items-center font-bold text-xs">5</span>
-        <div><b>Teste:</b> selecione o script e clique <b>Run Script</b>.</div>
-      </div>
+      <div class="step"><b>System → Scheduler → “+”</b> · Interval <code>00:01:00</code> · On Event <code>/system script run sonda-telemetry</code></div>
+      <div class="step"><b>Teste:</b> selecione o script e clique <b>Run Script</b>.</div>
     </div>
-    <div class="mt-3 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-200 p-2 text-xs">
-      ⚠️ <b>Latência/Jitter</b> usam <code class="text-blue-200">as-value</code> (RTT em ms). Se aparecerem <b>0</b> ou valores gigantescos,
-      é a conversão de unidade do seu RouterOS — me manda um exemplo que eu ajusto o divisor. <b>Perda, PPPoE, CPU, Memória, DNS e HTTP</b> são 100% confiáveis.
+    <div class="mt-3 rounded-lg bg-emerald-500/10 border border-emerald-500/40 text-emerald-200 p-3 text-xs">
+      ✅ Bateria completa e testada nesta RB (RouterOS <b>6.49.20</b>): <b>Perda ×5, Latência ×5, PPPoE, CPU, Memória, DNS e HTTP</b>.
+      A latência sai sem <code>as-value</code> (que não existe no v6.49): o <code>:execute</code> grava o <code>/ping</code> num arquivo e extraímos o <code>avg-rtt</code> por texto.
+    </div>
+    <div class="mt-2 rounded-lg bg-amber-500/10 border border-amber-500/40 text-amber-200 p-3 text-xs">
+      ⚠️ <b>Edite sempre o script que o Scheduler roda</b> (o do <code>on-event=/system script run sonda-telemetry</code>) — não crie um script novo à parte, senão o Scheduler continua rodando o antigo e nada muda. Confira com <code>/system scheduler print detail</code>.
     </div>
   </div>
-</div>
-
-<div class="flex justify-between items-center mt-8 mb-4">
-  <h2 class="text-xl font-semibold">🛰️ Sondas ao vivo</h2>
-  <span id="updated" class="text-slate-400 text-sm">carregando…</span>
-</div>
-<div id="kpis" class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"></div>
-<div id="probes"><div class="rounded-2xl border border-white/10 bg-slate-800/60 p-6 text-slate-400">Aguardando dados das sondas…</div></div>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -171,30 +186,38 @@
   const $ = id => document.getElementById(id);
   const esc = s => (s==null?'':String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
   const fmtNum = v => (v==null?'—':(Math.round(v*10)/10).toString());
-  const PALETTE = ['#60a5fa','#34d399','#fbbf24','#f472b6','#a78bfa','#f87171','#22d3ee','#fb923c'];
+  const PALETTE = ['#8b5cf6','#34d399','#fbbf24','#f472b6','#22d3ee','#f87171','#c4b5fd','#fb923c'];
   const LVLCOLOR = { bad:'#ef4444', warn:'#fb923c', ok:'#34d399', none:'#94a3b8' };
 
   const DEST = {
     bras:'BRAS', core:'Core (Sede)', google:'Google', cloudflare:'Cloudflare', dns2:'DNS 2', facebook:'Facebook',
-    cpu:'CPU', mem_free:'Memória livre', uptime_s:'Uptime', dns_ok:'DNS', http_ok:'HTTP',
+    gateway:'Gateway', dns:'DNS', http:'HTTP',
+    cpu:'CPU', mem_free:'Memória livre', memfree:'Memória livre', uptime_s:'Uptime', uptime:'Uptime',
+    dns_ok:'DNS', http_ok:'HTTP', dns_query:'Tempo DNS', dns_query_ms:'Tempo DNS', http_mbps:'Vazão HTTP', mos:'MOS',
   };
   function familyOf(k){
-    if(k.startsWith('loss')) return 'loss';
-    if(k.startsWith('rtt')||k.startsWith('latency')) return 'latency';
-    if(k.startsWith('jitter')) return 'jitter';
-    if(k.startsWith('cpu')) return 'cpu';
-    if(k.startsWith('mem_free')||k==='memfree') return 'memfree';
-    if(k==='dns_ok'||k==='http_ok'||k.startsWith('up_')||k.startsWith('reach')) return 'bool';
-    if(k==='uptime_s') return 'info';
+    const s=String(k).toLowerCase();
+    if(s.startsWith('loss')) return 'loss';
+    if(s.startsWith('jitter')) return 'jitter';
+    if(s.startsWith('rtt')||s.startsWith('latency')||s.startsWith('ping')) return 'latency';
+    if(s.includes('mbps')||s.includes('mbit')||s.includes('throughput')||s.startsWith('speed')||s.startsWith('down_mbps')) return 'throughput';
+    if(s==='mos'||s.startsWith('mos')||s.endsWith('_mos')) return 'mos';
+    if(s.startsWith('cpu')) return 'cpu';
+    if(s.startsWith('mem')) return 'memfree';
+    if(s.endsWith('_ok')||s.startsWith('reach')||s.startsWith('up_')||s.startsWith('online')) return 'bool';
+    if(s.startsWith('uptime')) return 'info';
+    if(s.includes('_ms')||s.endsWith('ms')) return 'latency';
     return 'info';
   }
   function labelOf(k){
     if(DEST[k]) return DEST[k];
-    let b=k; ['loss_','rtt_','latency_','jitter_'].forEach(p=>{ if(b.startsWith(p)) b=b.slice(p.length); });
+    let b=k; ['loss_','rtt_','latency_','jitter_','ping_'].forEach(p=>{ if(b.startsWith(p)) b=b.slice(p.length); });
+    ['_ms','_pct','_mbps'].forEach(sfx=>{ if(b.endsWith(sfx)) b=b.slice(0,-sfx.length); });
     return DEST[b] || b.replace(/_/g,' ').replace(/\b\w/g,m=>m.toUpperCase());
   }
   const FAM = {
     loss:{label:'📉 Perda', unit:'%'}, latency:{label:'⏱️ Latência', unit:'ms'}, jitter:{label:'📊 Jitter', unit:'ms'},
+    throughput:{label:'🚀 Vazão', unit:'Mbps'}, mos:{label:'🎧 Qualidade (MOS)', unit:''},
     bool:{label:'🧪 Testes', unit:''}, cpu:{label:'🖥️ CPU', unit:'%'}, memfree:{label:'💾 Memória livre', unit:'%'}, info:{label:'ℹ️ Info', unit:''},
   };
 
@@ -206,6 +229,8 @@
     if(f==='jitter'){ if(v>=THR.jitter)return'bad'; if(v>=THR.jitter*0.7)return'warn'; return'ok'; }
     if(f==='cpu'){ if(v>=THR.cpu)return'bad'; if(v>=THR.cpu*0.8)return'warn'; return'ok'; }
     if(f==='memfree'){ if(v<=THR.memfree)return'bad'; if(v<=THR.memfree*1.5)return'warn'; return'ok'; }
+    if(f==='throughput'){ return v>0?'ok':'warn'; }
+    if(f==='mos'){ if(v<3)return'bad'; if(v<3.8)return'warn'; return'ok'; }
     if(f==='bool'){ return v===0?'bad':'ok'; }
     return 'none';
   }
@@ -223,90 +248,176 @@
     if(k==='uptime_s') return fmtUptime(v);
     return fmtNum(v)+'<span class="text-sm text-slate-400 font-semibold"> '+FAM[f].unit+'</span>';
   }
-  function tilesHtml(last){
-    const order=['loss','latency','jitter','bool','cpu','memfree','info'];
-    let html='';
-    order.forEach(f=>{
-      const keys=Object.keys(last).filter(k=>familyOf(k)===f).sort();
-      if(!keys.length) return;
-      const tiles=keys.map(k=>{
-        const v=last[k], col=LVLCOLOR[level(k,v)];
-        const w = f==='loss'?Math.min(100,Math.max(4,v||0)) : (f==='memfree'?Math.min(100,v||0) : null);
-        const bar = w!=null ? `<div class="absolute left-0 bottom-0 h-1" style="background:${col}; width:${w}%"></div>` : '';
-        return `<div class="rounded-xl border border-white/10 bg-black/20 p-3 relative overflow-hidden">
-          <div class="text-[11px] uppercase tracking-wide text-slate-400">${esc(labelOf(k))}</div>
-          <div class="text-2xl font-extrabold mt-0.5" style="color:${col}">${tileValue(k,v)}</div>${bar}</div>`;
-      }).join('');
-      html+=`<div class="mt-3"><div class="text-xs text-slate-400 font-semibold mb-1.5">${FAM[f].label}</div>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">${tiles}</div></div>`;
-    });
-    return html || '<div class="text-slate-400 mt-3">Sem métricas nesta leitura.</div>';
-  }
   function badgesHtml(p){
     const al=(p.alarms||[]).length?badge(B.warn,'⚠️ '+p.alarms.length+' alarme(s)'):'';
     return onlineBadge(p.online,p.age_s)+' '+pppoeBadge(p.pppoe)+' '+al+' '+badge(B.muted,(p.samples||0)+' leituras');
   }
 
-  // ---- Chart.js ----
+  // ---- Chart.js & UI Builders ----
   let CHARTS={}, BUILT='';
-  const CHART_DEFS=[
-    {key:'loss', t:'📉 Perda (%)', u:'%', max:100, fams:['loss']},
-    {key:'latency', t:'⏱️ Latência (ms)', u:'ms', max:null, fams:['latency']},
-    {key:'jitter', t:'📊 Jitter (ms)', u:'ms', max:null, fams:['jitter']},
-    {key:'health', t:'🖥️ CPU e Memória (%)', u:'%', max:100, fams:['cpu','memfree']},
-  ];
-  const keysFor=(s,def)=>Object.keys(s).filter(k=>k!=='ts'&&def.fams.includes(familyOf(k))).sort();
   function chartOptions(unit,max){
     return { responsive:true, maintainAspectRatio:false, animation:{duration:250}, interaction:{intersect:false,mode:'index'},
-      scales:{ x:{ticks:{color:'#94a3b8',font:{size:10},maxRotation:0,autoSkip:true,maxTicksLimit:6},grid:{color:'rgba(255,255,255,0.05)'}},
-               y:{beginAtZero:true,min:0,suggestedMax:max||undefined,ticks:{color:'#94a3b8',font:{size:10},callback:v=>v+unit},grid:{color:'rgba(255,255,255,0.06)'}} },
-      plugins:{ legend:{labels:{color:'#cbd5e1',boxWidth:14,boxHeight:3,font:{size:11}}},
-                tooltip:{backgroundColor:'rgba(15,23,42,0.95)',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,titleColor:'#e2e8f0',bodyColor:'#cbd5e1',padding:10,callbacks:{label:c=>` ${c.dataset.label}: ${c.parsed.y}${unit}`}} } };
+      scales:{ x:{display:false}, y:{display:false, beginAtZero:true, min:0, suggestedMax:max||undefined} },
+      plugins:{ legend:{display:false},
+                tooltip:{backgroundColor:'rgba(9,9,11,0.95)',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,titleColor:'#e4e4e7',bodyColor:'#d4d4d8',padding:10,callbacks:{label:c=>` ${c.parsed.y}${unit}`}} } };
   }
-  function makeChart(canvas,ts,keys,series,unit,max){
+  function makeChart(canvas,ts,k,series,unit,max,color){
     const labels=ts.map(t=>new Date(t*1000).toLocaleTimeString('pt-BR'));
-    const datasets=keys.map((k,i)=>({label:labelOf(k),data:series[k],borderColor:PALETTE[i%PALETTE.length],backgroundColor:PALETTE[i%PALETTE.length]+'22',borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.35,spanGaps:true,fill:unit==='%'}));
-    const ch=new Chart(canvas,{type:'line',data:{labels,datasets},options:chartOptions(unit,max)}); ch._keys=keys; return ch;
+    const c = color !== '#94a3b8' ? color : '#8b5cf6';
+    const datasets=[{data:series[k],borderColor:c,backgroundColor:c+'22',borderWidth:2,pointRadius:0,pointHoverRadius:4,tension:0.35,spanGaps:true,fill:true}];
+    return new Chart(canvas,{type:'line',data:{labels,datasets},options:chartOptions(unit,max)});
   }
-
   function sig(probes){ return probes.map(p=>p.probe+'|'+Object.keys(p.last||{}).sort().join(',')+'|'+((p.series&&p.series.ts&&p.series.ts.length>=2)?'C':'-')).join(';'); }
+
+  // ---- Filtro de sonda (quando há mais de uma) ----
+  let PFILTER='all', PF_SIG='';
+  function populateFilter(probes){
+    const wrap=$('probe-filter'); if(!wrap) return;
+    const names=probes.map(p=>p.probe);
+    if(names.length<=1){ wrap.innerHTML=''; wrap.classList.add('is-hidden'); PFILTER='all'; return; }
+    wrap.classList.remove('is-hidden');
+    const s=names.join('|');
+    if(s!==PF_SIG){
+      PF_SIG=s;
+      if(PFILTER!=='all' && !names.includes(PFILTER)) PFILTER='all';
+      wrap.innerHTML='<button data-p="all" class="'+(PFILTER==='all'?'active':'')+'">Todas</button>'+
+        names.map(n=>'<button data-p="'+esc(n)+'" class="'+(PFILTER===esc(n)?'active':'')+'">'+esc(n)+'</button>').join('');
+    }
+  }
+  function applyFilter(){
+    document.querySelectorAll('#probes [data-probe]').forEach(el=>{
+      el.classList.toggle('is-hidden', !(PFILTER==='all' || el.getAttribute('data-probe')===PFILTER));
+    });
+  }
 
   function build(probes){
     Object.values(CHARTS).forEach(c=>{try{c.destroy()}catch(e){}}); CHARTS={};
     $('probes').innerHTML=probes.map((p,idx)=>{
-      const s=p.series||{}, hasPts=(s.ts&&s.ts.length>=2);
-      let charts='<p class="text-slate-400 text-sm mt-3">Coletando pontos para os gráficos…</p>';
-      if(hasPts){
-        const present=CHART_DEFS.filter(def=>keysFor(s,def).length);
-        if(present.length){
-          const cols = present.length>1?'lg:grid-cols-2':'';
-          charts=`<div class="grid grid-cols-1 ${cols} gap-6 mt-4">`+present.map(def=>
-            `<div><h4 class="text-xs text-slate-400 font-semibold mb-1">${def.t}</h4><div class="h-52"><canvas id="c-${def.key}-${idx}"></canvas></div></div>`).join('')+`</div>`;
-        }
+      const s=p.series||{}, last=p.last||{}, hasPts=(s.ts&&s.ts.length>=2);
+      let html = '';
+      const order=['loss','latency','jitter','throughput','mos','cpu','memfree'];
+      order.forEach(f=>{
+        const keys=Object.keys(last).filter(k=>familyOf(k)===f).sort();
+        if(!keys.length) return;
+        const cards = keys.map(k=>{
+          const v=last[k], col=LVLCOLOR[level(k,v)];
+          let min='—', max='—', avg='—';
+          if(s[k] && s[k].length) {
+            const vals = s[k].filter(x=>x!=null);
+            if(vals.length) {
+              min = fmtNum(Math.min(...vals));
+              max = fmtNum(Math.max(...vals));
+              avg = fmtNum(vals.reduce((a,b)=>a+b,0)/vals.length);
+            }
+          }
+          return `<div class="rounded-xl border border-white/10 bg-black/20 p-4 flex flex-col gap-3">
+            <div class="flex items-center gap-4">
+              <div class="shrink-0 w-28 flex flex-col justify-center">
+                <div class="text-[11px] uppercase tracking-wide text-slate-400 mb-1">${esc(labelOf(k))}</div>
+                <div class="text-3xl font-extrabold" id="val-${idx}-${k}" style="color:${col}">${fmtNum(v)}<span class="text-sm text-slate-500 font-semibold ml-1">${FAM[f].unit}</span></div>
+              </div>
+              <div class="grow h-16 relative">
+                ${hasPts ? `<canvas id="c-${idx}-${k}"></canvas>` : `<div class="text-xs text-slate-500 pt-4">Coletando dados…</div>`}
+              </div>
+            </div>
+            <div class="flex justify-between items-center text-[11px] text-slate-400 pt-2 border-t border-white/5">
+              <span>Mín: <b class="text-slate-200" id="min-${idx}-${k}">${min}</b></span>
+              <span>Média: <b class="text-slate-200" id="avg-${idx}-${k}">${avg}</b></span>
+              <span>Máx: <b class="text-slate-200" id="max-${idx}-${k}">${max}</b></span>
+            </div>
+          </div>`;
+        }).join('');
+        html += `<div class="mt-5"><div class="text-xs text-slate-400 font-semibold mb-2 ml-1">${FAM[f].label}</div>
+                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">${cards}</div></div>`;
+      });
+
+      const boolInfoKeys = Object.keys(last).filter(k=>['bool','info'].includes(familyOf(k))).sort();
+      if(boolInfoKeys.length) {
+        const tiles = boolInfoKeys.map(k=>{
+          const v=last[k], col=LVLCOLOR[level(k,v)];
+          return `<div class="rounded-xl border border-white/10 bg-black/20 p-3 relative overflow-hidden">
+            <div class="text-[11px] uppercase tracking-wide text-slate-400">${esc(labelOf(k))}</div>
+            <div class="text-2xl font-extrabold mt-0.5" id="val-${idx}-${k}" style="color:${col}">${tileValue(k,v)}</div>
+          </div>`;
+        }).join('');
+        html += `<div class="mt-5"><div class="text-xs text-slate-400 font-semibold mb-2 ml-1">Testes e Informações</div>
+                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">${tiles}</div></div>`;
       }
-      return `<div class="rounded-2xl border border-white/10 bg-slate-800/60 backdrop-blur p-6 mb-6">
-        <div class="flex justify-between items-center flex-wrap gap-3">
+      if(!html) html = '<div class="text-slate-400 mt-3">Sem métricas nesta leitura.</div>';
+
+      return `<div data-probe="${esc(p.probe)}" class="rounded-2xl border border-white/10 bg-slate-800/60 backdrop-blur p-6 mb-6">
+        <div class="flex justify-between items-center flex-wrap gap-3 mb-2">
           <span class="text-xl font-extrabold">📍 ${esc(p.probe)}</span>
           <div class="flex gap-1.5 flex-wrap items-center">
             <span class="flex gap-1.5 flex-wrap items-center" id="badges-${idx}">${badgesHtml(p)}</span>
             <button data-probe="${esc(p.probe)}" class="btn-forget text-xs px-3 py-1 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500 hover:text-white transition">🗑 Esquecer</button>
           </div>
         </div>
-        <div id="tiles-${idx}">${tilesHtml(p.last||{})}</div>
-        ${charts}
+        ${html}
       </div>`;
     }).join('');
-    probes.forEach((p,idx)=>{ const s=p.series||{}; if(!(s.ts&&s.ts.length>=2)) return;
-      CHART_FAMS.forEach(cf=>{ const keys=Object.keys(s).filter(k=>familyOf(k)===cf.f).sort(); const el=$('c-'+cf.f+'-'+idx);
-        if(keys.length&&el) CHARTS[cf.f+'-'+idx]=makeChart(el,s.ts,keys,s,cf.u,cf.max); }); });
+
+    probes.forEach((p,idx)=>{ 
+      const s=p.series||{}; if(!(s.ts&&s.ts.length>=2)) return;
+      Object.keys(p.last||{}).forEach(k => {
+        const f = familyOf(k);
+        if(['bool','info'].includes(f)) return;
+        const el = $('c-'+idx+'-'+k);
+        if(el) {
+          let max = null;
+          if(f==='loss'||f==='cpu'||f==='memfree') max=100;
+          if(f==='mos') max=5;
+          const col=LVLCOLOR[level(k,p.last[k])];
+          CHARTS[`${idx}-${k}`] = makeChart(el, s.ts, k, s, FAM[f].unit, max, col);
+        }
+      });
+    });
+    applyFilter();
   }
   function refresh(probes){
     probes.forEach((p,idx)=>{
       const b=$('badges-'+idx); if(b) b.innerHTML=badgesHtml(p);
-      const t=$('tiles-'+idx); if(t) t.innerHTML=tilesHtml(p.last||{});
-      const s=p.series||{}, labels=(s.ts||[]).map(x=>new Date(x*1000).toLocaleTimeString('pt-BR'));
-      CHART_FAMS.forEach(cf=>{ const ch=CHARTS[cf.f+'-'+idx]; if(!ch) return; ch.data.labels=labels;
-        ch._keys.forEach((k,i)=>{ if(ch.data.datasets[i]) ch.data.datasets[i].data=s[k]; }); ch.update('none'); });
+      const s=p.series||{}, last=p.last||{};
+      const labels=(s.ts||[]).map(x=>new Date(x*1000).toLocaleTimeString('pt-BR'));
+      
+      Object.keys(last).forEach(k => {
+        const v = last[k], f = familyOf(k), col = LVLCOLOR[level(k,v)];
+        const valEl = $(`val-${idx}-${k}`);
+        if(valEl) {
+          if(['bool','info'].includes(f)) {
+            valEl.innerHTML = tileValue(k,v);
+          } else {
+            valEl.innerHTML = `${fmtNum(v)}<span class="text-sm text-slate-500 font-semibold ml-1">${FAM[f].unit}</span>`;
+          }
+          valEl.style.color = col;
+        }
+        
+        if(!['bool','info'].includes(f)) {
+          let min='—', max='—', avg='—';
+          if(s[k] && s[k].length) {
+            const vals = s[k].filter(x=>x!=null);
+            if(vals.length) {
+              min = fmtNum(Math.min(...vals));
+              max = fmtNum(Math.max(...vals));
+              avg = fmtNum(vals.reduce((a,b)=>a+b,0)/vals.length);
+            }
+          }
+          const minEl=$(`min-${idx}-${k}`), maxEl=$(`max-${idx}-${k}`), avgEl=$(`avg-${idx}-${k}`);
+          if(minEl) minEl.innerText = min;
+          if(maxEl) maxEl.innerText = max;
+          if(avgEl) avgEl.innerText = avg;
+        }
+
+        const ch = CHARTS[`${idx}-${k}`];
+        if(ch) {
+          ch.data.labels = labels;
+          ch.data.datasets[0].data = s[k];
+          const c = col !== '#94a3b8' ? col : '#8b5cf6';
+          ch.data.datasets[0].borderColor = c;
+          ch.data.datasets[0].backgroundColor = c+'22';
+          ch.update('none');
+        }
+      });
     });
   }
   function renderKpis(probes){
@@ -314,20 +425,46 @@
     const kpi=(n,l,c)=>`<div class="rounded-2xl border border-white/10 bg-slate-800/60 p-5"><div class="text-4xl font-extrabold leading-none" style="color:${c}">${n}</div><div class="text-slate-400 text-xs mt-1 uppercase tracking-wide">${l}</div></div>`;
     $('kpis').innerHTML=kpi(total,'Sondas','#f8fafc')+kpi(online,'Online',online===total?'#34d399':'#fb923c')+kpi(alarmed,'Com alarme',alarmed?'#ef4444':'#34d399')+kpi(down,'PPPoE down',down?'#ef4444':'#34d399');
   }
+  function renderData(data) {
+      if(data.thresholds) THR=data.thresholds;
+      const probes=data.probes||[]; renderKpis(probes); populateFilter(probes);
+      if(!probes.length){ $('probes').innerHTML='<div class="rounded-2xl border border-white/10 bg-slate-800/60 p-6 text-slate-400">Nenhuma sonda enviou dados ainda. Veja a aba <b class="text-slate-200">Como configurar</b>.</div>'; BUILT=''; }
+      else { const s=sig(probes); if(s!==BUILT){ BUILT=s; build(probes); } refresh(probes); applyFilter(); }
+      $('updated').textContent='atualizado '+new Date().toLocaleTimeString('pt-BR');
+  }
+
   async function load(){
     try{
       const r=await fetch('/api/probe/samples',{cache:'no-store'}); const data=await r.json();
-      if(data.thresholds) THR=data.thresholds;
-      const probes=data.probes||[]; renderKpis(probes);
-      if(!probes.length){ $('probes').innerHTML='<div class="rounded-2xl border border-white/10 bg-slate-800/60 p-6 text-slate-400">Nenhuma sonda enviou dados ainda. Siga o guia acima.</div>'; BUILT=''; }
-      else { const s=sig(probes); if(s!==BUILT){ BUILT=s; build(probes); } refresh(probes); }
-      $('updated').textContent='atualizado '+new Date().toLocaleTimeString('pt-BR');
+      localStorage.setItem('sonda_cache', JSON.stringify(data));
+      renderData(data);
     }catch(e){ $('updated').textContent='erro ao carregar: '+e.message; }
   }
-  document.addEventListener('click', async (ev)=>{ const b=ev.target.closest('.btn-forget'); if(!b) return;
+
+  try {
+      const c = localStorage.getItem('sonda_cache');
+      if (c) renderData(JSON.parse(c));
+  } catch(e) {}
+
+  // ---- Abas ----
+  document.getElementById('sonda-tabs').addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#sonda-tabs button').forEach(x=>x.classList.toggle('active', x===b));
+    const tab=b.dataset.tab;
+    ['live','config','guide'].forEach(t=>{ const el=$('tab-'+t); if(el) el.classList.toggle('is-hidden', t!==tab); });
+  });
+
+  // ---- Cliques (filtro de sonda + esquecer) ----
+  document.addEventListener('click', async (ev)=>{
+    const fb=ev.target.closest('#probe-filter button');
+    if(fb){ PFILTER=fb.getAttribute('data-p');
+      document.querySelectorAll('#probe-filter button').forEach(x=>x.classList.toggle('active', x===fb));
+      applyFilter(); return; }
+    const b=ev.target.closest('.btn-forget'); if(!b) return;
     const name=b.getAttribute('data-probe'); if(!confirm('Apagar a sonda "'+name+'"? Remove as leituras e o histórico dela.')) return;
-    b.textContent='apagando…'; await fetch('/sonda/forget',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'probe='+encodeURIComponent(name)}); BUILT=''; load(); });
+    b.textContent='apagando…'; await fetch('/sonda/forget',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'probe='+encodeURIComponent(name)}); BUILT=''; load();
+  });
   function copyVal(id,btn){ const el=$(id); el.select(); el.setSelectionRange(0,99999); navigator.clipboard.writeText(el.value).then(()=>{const t=btn.textContent;btn.textContent='Copiado!';setTimeout(()=>btn.textContent=t,1200);}).catch(()=>{}); }
-  load(); setInterval(load,10000);
+  load(); setInterval(load,30000);
 </script>
 {% endblock %}

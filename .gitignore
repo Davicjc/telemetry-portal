@@ -16,4 +16,10 @@ __pycache__/
 .idea/
 *.swp
 .DS_Store
-2026-08-04-171115-apenas-leia-o-chat-2026-08-03-173505-claude-veja.txt
+
+# Notas locais com infra interna (IP da VM, credenciais, caminhos) — NÃO versionar
+*.local.md
+.claude/
+
+# Exports de conversa do Claude Code (/export gera arquivos com prefixo de data)
+20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]-*.txt

@@ -1,59 +1,70 @@
 {% extends "base.html" %}
 {% block title %}Usuários - Telemetry Portal{% endblock %}
+{% block eyebrow %}Conta & Acesso{% endblock %}
+{% block heading %}Usuários{% endblock %}
+
+{% block extra_css %}
+    .user-list { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+    .user-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,.14); }
+    .user-row .av { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--primary-soft); color: #c4b5fd; font-family: 'Space Grotesk'; font-weight: 700; font-size: 14px; }
+    .user-row .nm { flex: 1; font-size: 14px; font-weight: 500; }
+{% endblock %}
+
 {% block content %}
     <div class="grid">
         <div class="card">
-            <h2>🔑 Trocar minha senha</h2>
+            <div class="card-head">
+                <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+                <div><h2>Trocar minha senha</h2><div class="sub">Atualize sua credencial de acesso</div></div>
+            </div>
             <form action="{{ url_for('account_password') }}" method="POST">
                 <div class="input-group">
                     <label>Senha atual</label>
-                    <input type="password" name="current_password" required>
+                    <input type="password" name="current_password" required placeholder="••••••••">
                 </div>
                 <div class="input-group">
                     <label>Nova senha</label>
-                    <input type="password" name="new_password" required>
+                    <input type="password" name="new_password" required placeholder="••••••••">
                 </div>
                 <button type="submit" class="btn" style="width: 100%;">Alterar senha</button>
             </form>
         </div>
 
         <div class="card">
-            <h2>👥 Usuários de login</h2>
-            <form action="{{ url_for('user_add') }}" method="POST" style="display:flex; gap:.75rem; align-items:flex-end; margin-bottom:1.5rem; flex-wrap:wrap;">
-                <div class="input-group" style="margin:0; flex:1; min-width:140px;">
+            <div class="card-head">
+                <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+                <div><h2>Usuários de login</h2><div class="sub">{{ users|length }} conta(s)</div></div>
+            </div>
+
+            <form action="{{ url_for('user_add') }}" method="POST" style="display:flex; gap:10px; align-items:flex-end; margin-bottom:18px; flex-wrap:wrap;">
+                <div class="input-group" style="margin:0; flex:1; min-width:130px;">
                     <label>Novo usuário</label>
                     <input type="text" name="username" required placeholder="ex: joao">
                 </div>
-                <div class="input-group" style="margin:0; flex:1; min-width:140px;">
+                <div class="input-group" style="margin:0; flex:1; min-width:130px;">
                     <label>Senha</label>
-                    <input type="password" name="password" required>
+                    <input type="password" name="password" required placeholder="••••••••">
                 </div>
                 <button type="submit" class="btn">Adicionar</button>
             </form>
-            <table>
-                <thead><tr><th>Usuário</th><th style="text-align:right;">Ações</th></tr></thead>
-                <tbody>
-                    {% for u in users %}
-                    <tr>
-                        <td>👤 {{ u[1] }}{% if u[1] == current_user.username %} <span style="color:var(--text-muted);">(você)</span>{% endif %}</td>
-                        <td style="text-align:right;">
-                            {% if u[1] != current_user.username %}
-                            <a href="{{ url_for('user_delete', id=u[0]) }}" class="btn btn-danger"
-                               style="padding:.4rem .8rem; font-size:.8rem;"
-                               onclick="return confirm('Apagar o usuário {{ u[1] }}? Ele perde o acesso ao portal.');">Remover</a>
-                            {% else %}
-                            <span style="color: var(--text-muted); font-size:.85rem;">—</span>
-                            {% endif %}
-                        </td>
-                    </tr>
+
+            <div class="user-list">
+                {% for u in users %}
+                <div class="user-row">
+                    <div class="av">{{ u[1][0]|upper }}</div>
+                    <div class="nm">{{ u[1] }}{% if u[1] == current_user.username %} <span class="badge2 b-vio2" style="margin-left:4px;">você</span>{% endif %}</div>
+                    {% if u[1] != current_user.username %}
+                    <a href="{{ url_for('user_delete', id=u[0]) }}" class="btn btn-danger btn-sm"
+                       onclick="return confirm('Apagar o usuário {{ u[1] }}? Ele perde o acesso ao portal.');">Remover</a>
                     {% else %}
-                    <tr><td colspan="2" style="color: var(--text-muted);">Nenhum usuário.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <p style="color: var(--text-muted); margin-top: 1rem; font-size: .85rem;">
-                Você não pode apagar o próprio usuário nem o último restante (evita travar o acesso).
-            </p>
+                    <span class="hint">—</span>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="emptybox"><b>Nenhum usuário</b></div>
+                {% endfor %}
+            </div>
+            <p class="hint" style="margin-top: 14px;">Você não pode apagar o próprio usuário nem o último restante (evita travar o acesso).</p>
         </div>
     </div>
 {% endblock %}

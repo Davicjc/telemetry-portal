@@ -1,46 +1,72 @@
 {% extends "base.html" %}
-{% block title %}Gráficos - Telemetry Portal{% endblock %}
+{% block title %}Painel - Telemetry Portal{% endblock %}
+{% block eyebrow %}Visão geral{% endblock %}
+{% block heading %}Painel de status{% endblock %}
 {% block extra_css %}
-        .stats { display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:2rem; }
-        .stat { flex:1; min-width:120px; background:var(--glass-bg); border:1px solid var(--glass-border);
-                border-radius:1rem; padding:1.2rem 1rem; text-align:center; }
-        .stat .v { font-size:2.2rem; font-weight:800; line-height:1; }
-        .stat .l { color:var(--text-muted); font-size:.8rem; margin-top:.5rem; text-transform:uppercase; letter-spacing:.03em; }
-        .v-ok{color:var(--ok);} .v-bad{color:var(--danger);} .v-info{color:#a78bfa;}
-        .badge{ padding:.2rem .6rem; border-radius:999px; font-size:.8rem; font-weight:600; white-space:nowrap; }
-        .b-ok{background:rgba(52,211,153,.15);color:#34d399;}
-        .b-down{background:rgba(239,68,68,.15);color:#f87171;}
-        .b-off{background:rgba(239,68,68,.28);color:#fca5a5;}
-        .b-warn{background:rgba(249,115,22,.15);color:#fb923c;}
-        .bar{ height:16px; border-radius:999px; background:rgba(0,0,0,.25); overflow:hidden; margin-top:.4rem; }
-        .bar > span{ display:block; height:100%; border-radius:999px; transition:width .5s ease; }
-        .avail-row{ margin-bottom:1rem; }
-        .avail-row .top{ display:flex; justify-content:space-between; font-weight:600; }
+        /* KPIs (JS seta className='v ...' nesses elementos) */
+        .kgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
+        .kcard { position:relative; overflow:hidden; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
+        .kcard .khead { display:flex; align-items:center; justify-content:space-between; color:var(--text-muted); }
+        .kcard .khead svg { width:16px; height:16px; stroke:currentColor; }
+        .kcard .khead .kt { font-size:12px; font-weight:500; }
+        .v { font-family:'Space Grotesk'; font-size:30px; font-weight:700; line-height:1; margin-top:14px; }
+        .l { color:var(--text-muted); font-size:11px; margin-top:6px; text-transform:uppercase; letter-spacing:.05em; }
+        .v-ok{color:var(--ok);} .v-bad{color:var(--danger);} .v-info{color:#c4b5fd;}
+
+        .badge{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; border:1px solid transparent; }
+        .b-ok{background:rgba(52,211,153,.12);color:#6ee7b7;border-color:rgba(52,211,153,.25);}
+        .b-down{background:rgba(239,68,68,.12);color:#fca5a5;border-color:rgba(239,68,68,.28);}
+        .b-off{background:rgba(239,68,68,.2);color:#fca5a5;border-color:rgba(239,68,68,.4);}
+        .b-warn{background:rgba(251,146,60,.12);color:#fdba74;border-color:rgba(251,146,60,.28);}
+        .bar{ height:8px; border-radius:999px; background:rgba(0,0,0,.3); overflow:hidden; margin-top:8px; }
+        .bar > span{ display:block; height:100%; border-radius:999px; transition:width .6s ease; }
+        .avail-row{ margin-bottom:16px; }
+        .avail-row:last-child{ margin-bottom:0; }
+        .avail-row .top{ display:flex; justify-content:space-between; font-weight:600; font-size:14px; }
+        .avail-row .top span:last-child{ font-family:'JetBrains Mono'; }
         .muted{ color:var(--text-muted); }
-        .pe-card{ margin-bottom:1.5rem; }
-        .pe-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem; margin-bottom:1.2rem; }
-        .pe-head .name{ font-size:1.15rem; font-weight:700; }
-        .pe-head .sub{ display:flex; gap:.5rem; flex-wrap:wrap; }
-        .pe-cols{ display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
-        .pe-cols h3{ font-size:.95rem; font-weight:600; color:var(--text-muted); margin-bottom:.6rem; }
+        .pe-card{ margin-bottom:20px; }
+        .pe-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+        .pe-head .name{ font-size:16px; font-weight:700; font-family:'Space Grotesk'; }
+        .pe-head .sub{ display:flex; gap:8px; flex-wrap:wrap; }
+        .pe-cols{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+        .pe-cols h3{ font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:.04em; }
         @media (max-width: 900px){ .pe-cols{ grid-template-columns:1fr; } }
 {% endblock %}
 {% block content %}
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-        <h2 style="font-weight:600;">📊 Painel de Status (ao vivo)</h2>
-        <span class="muted" id="updated">carregando…</span>
+    <div class="section-head">
+        <div>
+            <div class="eyebrow">Core · ao vivo</div>
+            <div class="title">Saúde da rede</div>
+        </div>
+        <span class="badge2 b-mut2"><span class="dot" style="background:var(--ok)"></span><span id="updated">carregando…</span></span>
     </div>
 
-    <div class="stats">
-        <div class="stat"><div class="v v-info" id="c_pes">–</div><div class="l">PEs</div></div>
-        <div class="stat"><div class="v v-ok"  id="c_ou">–</div><div class="l">OSPF ✅</div></div>
-        <div class="stat"><div class="v"       id="c_od">–</div><div class="l">OSPF ❌</div></div>
-        <div class="stat"><div class="v v-ok"  id="c_bu">–</div><div class="l">BFD ✅</div></div>
-        <div class="stat"><div class="v"       id="c_bd">–</div><div class="l">BFD ❌</div></div>
+    <div class="kgrid">
+        <div class="kcard">
+            <div class="khead"><span class="kt">PEs</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 18h.01M12 14V6M8 6h8"/></svg></div>
+            <div class="v v-info" id="c_pes">–</div><div class="l">Roteadores</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">OSPF ok</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <div class="v v-ok" id="c_ou">–</div><div class="l">Vizinhos ativos</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">OSPF down</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+            <div class="v" id="c_od">–</div><div class="l">Vizinhos fora</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">BFD ok</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="v v-ok" id="c_bu">–</div><div class="l">Sessões ativas</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">BFD down</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+            <div class="v" id="c_bd">–</div><div class="l">Sessões fora</div>
+        </div>
     </div>
 
-    <div class="card" style="margin-bottom:2rem;">
-        <h2>📶 Disponibilidade do Core</h2>
+    <div class="card" style="margin-bottom:24px;">
+        <div class="card-head"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10M18 20V4M6 20v-4"/></svg></div><div><h2>Disponibilidade do core</h2><div class="sub">Percentual de vizinhos/sessões no ar</div></div></div>
         <div class="avail-row">
             <div class="top"><span>OSPF</span><span id="a_ospf_t">–</span></div>
             <div class="bar"><span id="a_ospf_b" style="width:0%; background:var(--ok);"></span></div>
@@ -51,15 +77,15 @@
         </div>
     </div>
 
-    <div class="card" id="alarms_card" style="margin-bottom:2rem; display:none;">
-        <h2>🔔 Alarmes Ativos</h2>
+    <div class="card" id="alarms_card" style="margin-bottom:24px; display:none; border-color:rgba(239,68,68,.3);">
+        <div class="card-head"><div class="ic" style="background:rgba(239,68,68,.12); color:#fca5a5;"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-9-16a1 1 0 0 0-1.7 0l-9 16A1 1 0 0 0 3 19.5h18a1 1 0 0 0 .7-1.5Z"/><path d="M12 9v4M12 17h.01"/></svg></div><div><h2>Alarmes ativos</h2><div class="sub">O que está fora do ar agora</div></div></div>
         <table>
             <thead><tr><th>Roteador</th><th>Tipo</th><th>Vizinho / Sessão</th><th>Status</th></tr></thead>
             <tbody id="alarms_body"></tbody>
         </table>
     </div>
 
-    <h2 style="font-weight:600; margin-bottom:1rem;">📍 Por Roteador (PE)</h2>
+    <div class="divlabel">Por roteador (PE)</div>
     <div id="pes"><div class="muted">carregando…</div></div>
 {% endblock %}
 {% block scripts %}

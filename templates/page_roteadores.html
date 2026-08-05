@@ -1,21 +1,141 @@
 {% extends "base.html" %}
 {% block title %}Roteadores - Telemetry Portal{% endblock %}
+{% block eyebrow %}Infraestrutura & Visão Geral{% endblock %}
+{% block heading %}Painel & Roteadores{% endblock %}
+
+{% block extra_css %}
+
+/* KPIs (JS seta className='v ...' nesses elementos) */
+        .kgrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin-bottom:24px; }
+        .kcard { position:relative; overflow:hidden; background:var(--card); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
+        .kcard .khead { display:flex; align-items:center; justify-content:space-between; color:var(--text-muted); }
+        .kcard .khead svg { width:16px; height:16px; stroke:currentColor; }
+        .kcard .khead .kt { font-size:12px; font-weight:500; }
+        .v { font-family:'Space Grotesk'; font-size:30px; font-weight:700; line-height:1; margin-top:14px; }
+        .l { color:var(--text-muted); font-size:11px; margin-top:6px; text-transform:uppercase; letter-spacing:.05em; }
+        .v-ok{color:var(--ok);} .v-bad{color:var(--danger);} .v-info{color:#c4b5fd;}
+
+        .badge{ display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:999px; font-size:11.5px; font-weight:600; white-space:nowrap; border:1px solid transparent; }
+        .b-ok{background:rgba(52,211,153,.12);color:#6ee7b7;border-color:rgba(52,211,153,.25);}
+        .b-down{background:rgba(239,68,68,.12);color:#fca5a5;border-color:rgba(239,68,68,.28);}
+        .b-off{background:rgba(239,68,68,.2);color:#fca5a5;border-color:rgba(239,68,68,.4);}
+        .b-warn{background:rgba(251,146,60,.12);color:#fdba74;border-color:rgba(251,146,60,.28);}
+        .bar{ height:8px; border-radius:999px; background:rgba(0,0,0,.3); overflow:hidden; margin-top:8px; }
+        .bar > span{ display:block; height:100%; border-radius:999px; transition:width .6s ease; }
+        .avail-row{ margin-bottom:16px; }
+        .avail-row:last-child{ margin-bottom:0; }
+        .avail-row .top{ display:flex; justify-content:space-between; font-weight:600; font-size:14px; }
+        .avail-row .top span:last-child{ font-family:'JetBrains Mono'; }
+        .muted{ color:var(--text-muted); }
+        .pe-card{ margin-bottom:20px; }
+        .pe-head{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px; }
+        .pe-head .name{ font-size:16px; font-weight:700; font-family:'Space Grotesk'; }
+        .pe-head .sub{ display:flex; gap:8px; flex-wrap:wrap; }
+        .pe-cols{ display:grid; grid-template-columns:1fr 1fr; gap:22px; }
+        .pe-cols h3{ font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:8px; text-transform:uppercase; letter-spacing:.04em; }
+        @media (max-width: 900px){ .pe-cols{ grid-template-columns:1fr; } }
+.router-list { display: flex; flex-direction: column; gap: 8px; }
+    .router-row { display: flex; align-items: center; gap: 14px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(0,0,0,.14); }
+    .router-row .rdot { width: 34px; height: 34px; border-radius: 9px; flex: none; display: grid; place-items: center; background: var(--primary-soft); color: #c4b5fd; }
+    .router-row .rdot svg { width: 17px; height: 17px; stroke: currentColor; }
+    .router-row .meta { min-width: 0; flex: 1; }
+    .router-row .meta b { font-size: 14px; font-weight: 600; display: block; }
+    .router-row .meta span { color: var(--text-muted); font-size: 12px; font-family: 'JetBrains Mono'; }
+    .nbr-name { display: flex; gap: 6px; align-items: center; }
+    .nbr-name input { padding: 7px 10px; background: rgba(0,0,0,.28); border: 1px solid var(--border-strong); border-radius: 8px; color: var(--text-main); outline: none; min-width: 130px; font-size: 13px; font-family: 'Inter'; }
+    .nbr-name input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--ring); }
+    .nbr-actions { display: flex; gap: 6px; white-space: nowrap; }
+    .row-dim { opacity: .5; }
+
+{% endblock %}
+
 {% block content %}
-    <div class="grid">
+
+<!-- Abas -->
+<div class="seg" id="router-tabs" style="margin-bottom: 22px;">
+  <button class="active" data-tab="live">📊 Ao vivo</button>
+  <button data-tab="config">⚙️ Cadastro e Configuração</button>
+</div>
+
+<!-- ===================== TAB: AO VIVO ===================== -->
+<section id="tab-live" class="stab-panel">
+<div class="section-head">
+        <div>
+            <div class="eyebrow">Core · ao vivo</div>
+            <div class="title">Saúde da rede</div>
+        </div>
+        <span class="badge2 b-mut2"><span class="dot" style="background:var(--ok)"></span><span id="updated">carregando…</span></span>
+    </div>
+
+    <div class="kgrid">
+        <div class="kcard">
+            <div class="khead"><span class="kt">PEs</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 18h.01M12 14V6M8 6h8"/></svg></div>
+            <div class="v v-info" id="c_pes">–</div><div class="l">Roteadores</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">OSPF ok</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>
+            <div class="v v-ok" id="c_ou">–</div><div class="l">Vizinhos ativos</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">OSPF down</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+            <div class="v" id="c_od">–</div><div class="l">Vizinhos fora</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">BFD ok</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+            <div class="v v-ok" id="c_bu">–</div><div class="l">Sessões ativas</div>
+        </div>
+        <div class="kcard">
+            <div class="khead"><span class="kt">BFD down</span><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></div>
+            <div class="v" id="c_bd">–</div><div class="l">Sessões fora</div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px;">
+        <div class="card-head"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10M18 20V4M6 20v-4"/></svg></div><div><h2>Disponibilidade do core</h2><div class="sub">Percentual de vizinhos/sessões no ar</div></div></div>
+        <div class="avail-row">
+            <div class="top"><span>OSPF</span><span id="a_ospf_t">–</span></div>
+            <div class="bar"><span id="a_ospf_b" style="width:0%; background:var(--ok);"></span></div>
+        </div>
+        <div class="avail-row">
+            <div class="top"><span>BFD</span><span id="a_bfd_t">–</span></div>
+            <div class="bar"><span id="a_bfd_b" style="width:0%; background:var(--ok);"></span></div>
+        </div>
+    </div>
+
+    <div class="card" id="alarms_card" style="margin-bottom:24px; display:none; border-color:rgba(239,68,68,.3);">
+        <div class="card-head"><div class="ic" style="background:rgba(239,68,68,.12); color:#fca5a5;"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.7 18-9-16a1 1 0 0 0-1.7 0l-9 16A1 1 0 0 0 3 19.5h18a1 1 0 0 0 .7-1.5Z"/><path d="M12 9v4M12 17h.01"/></svg></div><div><h2>Alarmes ativos</h2><div class="sub">O que está fora do ar agora</div></div></div>
+        <table>
+            <thead><tr><th>Roteador</th><th>Tipo</th><th>Vizinho / Sessão</th><th>Status</th></tr></thead>
+            <tbody id="alarms_body"></tbody>
+        </table>
+    </div>
+
+    <div class="divlabel">Por roteador (PE)</div>
+    <div id="pes"><div class="muted">carregando…</div></div>
+</section>
+
+<!-- ===================== TAB: CADASTRO ===================== -->
+<section id="tab-config" class="stab-panel is-hidden">
+<div class="grid" style="margin-bottom: 24px;">
         <div class="card">
-            <h2>Adicionar PE (Router)</h2>
+            <div class="card-head">
+                <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg></div>
+                <div><h2>Adicionar PE</h2><div class="sub">Cadastre um roteador MikroTik</div></div>
+            </div>
             <form action="{{ url_for('add_router') }}" method="POST">
                 <div class="input-group">
-                    <label>Nome (Identificação no Grafana)</label>
+                    <label>Nome (identificação)</label>
                     <input type="text" name="name" required placeholder="Ex: PE-Core-01">
                 </div>
-                <div class="input-group">
-                    <label>Endereço IP</label>
-                    <input type="text" name="ip" required placeholder="Ex: 10.0.0.1">
-                </div>
-                <div class="input-group">
-                    <label>Porta da API</label>
-                    <input type="number" name="port" required value="8728">
+                <div class="grid-2" style="gap: 14px;">
+                    <div class="input-group">
+                        <label>Endereço IP</label>
+                        <input type="text" name="ip" required placeholder="10.0.0.1">
+                    </div>
+                    <div class="input-group">
+                        <label>Porta da API</label>
+                        <input type="number" name="port" required value="8728">
+                    </div>
                 </div>
                 <div class="input-group">
                     <label>Usuário API</label>
@@ -23,91 +143,318 @@
                 </div>
                 <div class="input-group">
                     <label>Senha API</label>
-                    <input type="password" name="password" required>
+                    <input type="password" name="password" required placeholder="••••••••">
                 </div>
-                <button type="submit" class="btn" style="width: 100%;">Salvar Roteador</button>
+                <button type="submit" class="btn" style="width: 100%;">Salvar roteador</button>
             </form>
-            <p style="color: var(--text-muted); margin-top: 1rem; font-size: .85rem;">
-                A versão do RouterOS (v6/v7) é detectada automaticamente — não precisa marcar nada.
-            </p>
+            <p class="hint" style="margin-top: 14px;">A versão do RouterOS (v6/v7) é detectada automaticamente — não precisa marcar nada.</p>
         </div>
 
         <div class="card">
-            <h2>Roteadores Cadastrados</h2>
-            <table>
-                <thead>
-                    <tr><th>Nome</th><th>IP</th><th>Porta</th><th>Usuário</th><th>Ações</th></tr>
-                </thead>
-                <tbody>
-                    {% for r in routers %}
-                    <tr>
-                        <td><strong>{{ r[1] }}</strong></td>
-                        <td>{{ r[2] }}</td>
-                        <td>{{ r[3] }}</td>
-                        <td>{{ r[4] }}</td>
-                        <td>
-                            <a href="{{ url_for('delete_router', id=r[0]) }}" class="btn btn-danger"
-                               style="padding: 0.4rem 0.8rem; font-size: 0.8rem;"
-                               onclick="return confirm('Remover o PE {{ r[1] }}?');">Remover</a>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Nenhum roteador cadastrado.</td></tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            <div class="card-head">
+                <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 18h.01M12 14V6M8 6h8"/></svg></div>
+                <div><h2>Roteadores cadastrados</h2><div class="sub">{{ routers|length }} PE(s) monitorado(s)</div></div>
+            </div>
+            <div class="router-list">
+                {% for r in routers %}
+                <div class="router-row">
+                    <div class="rdot"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 18h.01"/></svg></div>
+                    <div class="meta">
+                        <b>{{ r[1] }}</b>
+                        <span>{{ r[2] }}:{{ r[3] }} · {{ r[4] }}</span>
+                    </div>
+                    <a href="{{ url_for('delete_router', id=r[0]) }}" class="btn btn-danger btn-sm"
+                       onclick="return confirm('Remover o PE {{ r[1] }}?');">Remover</a>
+                </div>
+                {% else %}
+                <div class="emptybox">
+                    <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 18h.01"/></svg></div>
+                    <b>Nenhum roteador ainda</b>
+                    Cadastre seu primeiro PE no formulário ao lado.
+                </div>
+                {% endfor %}
+            </div>
         </div>
     </div>
 
-    <div class="card" style="margin-top: 2rem;">
-        <h2>🔎 Vizinhos Descobertos (OSPF / BFD)</h2>
-        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
-            Descobertos automaticamente. Dê um <strong>nome amigável</strong> (aparece no Grafana e na aba Gráficos).
-            Quando um vizinho <strong>some</strong> do roteador, ele fica <span class="status-off">offline</span>.
-            <strong>Ignorar</strong> = some dos gráficos mas continua aqui. <strong>Esquecer</strong> = remove de vez.
+    <div class="card">
+        <div class="card-head" style="justify-content: space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.3-4.3M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/></svg></div>
+                <div><h2>Vizinhos descobertos</h2><div class="sub">OSPF / BFD · descobertos automaticamente</div></div>
+            </div>
+            <span class="badge2 b-mut2"><span id="nbr-count">{{ neighbors|length }}</span>&nbsp;de {{ neighbors|length }}</span>
+        </div>
+
+        <p class="hint" style="margin-bottom: 16px;">
+            Dê um <b style="color:var(--text-main)">nome amigável</b> (aparece no Painel e no Grafana).
+            <b style="color:var(--text-main)">Ignorar</b> tira do painel mas mantém aqui; <b style="color:var(--text-main)">Esquecer</b> remove de vez.
         </p>
-        <table>
+
+        <!-- Toolbar de filtros -->
+        <div class="toolbar">
+            <div class="search">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.3-4.3M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/></svg>
+                <input type="text" id="nbr-search" placeholder="Buscar por IP, nome ou roteador…" autocomplete="off">
+            </div>
+            <div class="grow"></div>
+            <div class="seg" id="seg-type" data-filter="type">
+                <button class="active" data-val="all">Todos</button>
+                <button data-val="ospf">OSPF</button>
+                <button data-val="bfd">BFD</button>
+            </div>
+            <div class="seg" id="seg-status" data-filter="status">
+                <button class="active" data-val="all">Todos</button>
+                <button data-val="online">● Online</button>
+                <button data-val="offline">● Offline</button>
+            </div>
+        </div>
+
+        <!-- Filtro por roteador -->
+        <div class="seg" id="seg-router" data-filter="router" style="margin-bottom: 16px;">
+            <button class="active" data-val="all">Todos os roteadores</button>
+            {% for r in routers %}<button data-val="{{ r[1] }}">{{ r[1] }}</button>{% endfor %}
+        </div>
+
+        <div style="overflow-x:auto;">
+        <table id="nbr-table">
             <thead>
-                <tr><th>Roteador</th><th>Tipo</th><th>IP</th><th>Status</th><th>Desde</th><th>Nome amigável</th><th>Ações</th></tr>
+                <tr><th>Roteador</th><th>Tipo</th><th>IP</th><th>Status</th><th>Desde</th><th>Nome amigável</th><th style="text-align:right;">Ações</th></tr>
             </thead>
             <tbody>
                 {% for n in neighbors %}
-                <tr style="{% if n.ignored %}opacity:.55;{% endif %}">
+                <tr class="nbr {% if n.ignored %}row-dim{% endif %}"
+                    data-router="{{ n.router }}" data-type="{{ n.type }}"
+                    data-status="{% if n.up %}online{% else %}offline{% endif %}"
+                    data-search="{{ (n.router ~ ' ' ~ n.ip ~ ' ' ~ n.name ~ ' ' ~ n.type)|lower }}">
                     <td><strong>{{ n.router }}</strong></td>
                     <td><span class="pill pill-{{ n.type }}">{{ n.type|upper }}</span></td>
-                    <td>{{ n.ip }}</td>
+                    <td class="mono-cell">{{ n.ip }}</td>
                     <td>
-                        {% if n.up %}<span class="status-on">● online</span>
-                        {% else %}<span class="status-off">● {{ n.state }}</span>{% endif %}
-                        {% if n.ignored %}<br><span class="pill pill-ignored">🙈 oculto</span>{% endif %}
+                        {% if n.up %}<span class="badge2 b-ok2"><span class="dot"></span>online</span>
+                        {% else %}<span class="badge2 b-bad2"><span class="dot"></span>{{ n.state }}</span>{% endif %}
+                        {% if n.ignored %}<span class="badge2 b-mut2" style="margin-left:6px;">oculto</span>{% endif %}
                     </td>
-                    <td style="color: var(--text-muted); white-space: nowrap;" title="Há quanto tempo neste estado">
-                        {% if n.up %}🟢{% else %}🔴{% endif %} {{ n.since_txt }}
-                    </td>
+                    <td class="mono-cell" style="white-space:nowrap;" title="Há quanto tempo neste estado">{{ n.since_txt }}</td>
                     <td>
-                        <form class="name-form" action="{{ url_for('neighbor_rename') }}" method="POST">
+                        <form class="nbr-name" action="{{ url_for('neighbor_rename') }}" method="POST">
                             <input type="hidden" name="router_id" value="{{ n.router_id }}">
                             <input type="hidden" name="ip" value="{{ n.ip }}">
                             <input type="text" name="name" value="{{ n.name }}" placeholder="ex: PE-Core-01">
-                            <button type="submit" class="btn" style="padding: 0.45rem 0.9rem; font-size: 0.8rem;">Salvar</button>
+                            <button type="submit" class="btn btn-sm">Salvar</button>
                         </form>
                     </td>
-                    <td style="white-space: nowrap;">
-                        <a href="{{ url_for('neighbor_ignore', router_id=n.router_id, ip=n.ip) }}"
-                           class="btn" style="padding: 0.45rem 0.9rem; font-size: 0.8rem; {% if not n.ignored %}background:#64748b;{% else %}background:#0ea5e9;{% endif %}">
-                            {% if n.ignored %}Mostrar{% else %}Ignorar{% endif %}
-                        </a>
-                        <a href="{{ url_for('neighbor_forget', router_id=n.router_id, ip=n.ip) }}"
-                           class="btn btn-danger" style="padding: 0.45rem 0.9rem; font-size: 0.8rem;"
-                           onclick="return confirm('Esquecer {{ n.ip }}? Deixa de ser monitorado e o alarme some.');">Esquecer</a>
+                    <td>
+                        <div class="nbr-actions" style="justify-content:flex-end;">
+                            <a href="{{ url_for('neighbor_ignore', router_id=n.router_id, ip=n.ip) }}"
+                               class="btn btn-sm {% if n.ignored %}btn-soft{% else %}btn-soft{% endif %}">
+                                {% if n.ignored %}Mostrar{% else %}Ignorar{% endif %}
+                            </a>
+                            <a href="{{ url_for('neighbor_forget', router_id=n.router_id, ip=n.ip) }}"
+                               class="btn btn-danger btn-sm"
+                               onclick="return confirm('Esquecer {{ n.ip }}? Deixa de ser monitorado e o alarme some.');">Esquecer</a>
+                        </div>
                     </td>
                 </tr>
-                {% else %}
-                <tr><td colspan="7" style="text-align: center; color: var(--text-muted);">
-                    Nenhum vizinho descoberto ainda. Aguarde o primeiro ciclo de coleta (abra a aba Gráficos).
-                </td></tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
+
+        <div id="nbr-empty" class="emptybox is-hidden">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.3-4.3M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/></svg></div>
+            <b>Nenhum vizinho para este filtro</b>
+            Ajuste a busca ou os filtros acima.
+        </div>
+        {% if not neighbors %}
+        <div class="emptybox">
+            <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l2 2"/></svg></div>
+            <b>Aguardando descoberta</b>
+            Nenhum vizinho ainda. Aguarde o primeiro ciclo de coleta (abra o Painel).
+        </div>
+        {% endif %}
     </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+
+<script>
+  // ---- Abas ----
+  document.getElementById('router-tabs').addEventListener('click', e => {
+    const b = e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#router-tabs button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    const tab = b.dataset.tab;
+    document.getElementById('tab-live').classList.toggle('is-hidden', tab !== 'live');
+    document.getElementById('tab-config').classList.toggle('is-hidden', tab !== 'config');
+  });
+
+  const $ = id => document.getElementById(id);
+  const esc = s => (s == null ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'));
+
+  function badge(state){
+    const s = (state||'').toLowerCase();
+    if (s === 'full' || s === 'up') return '<span class="badge b-ok">✅ ' + esc(state) + '</span>';
+    if (s === 'offline')            return '<span class="badge b-off">🔌 OFFLINE</span>';
+    if (s.indexOf('admin') >= 0)    return '<span class="badge b-warn">⚠️ ' + esc(state) + '</span>';
+    return '<span class="badge b-down">❌ ' + esc(state || 'down') + '</span>';
+  }
+  function availColor(p){ return p >= 99 ? 'var(--ok)' : (p >= 90 ? '#fb923c' : 'var(--danger)'); }
+  function setBar(barId, txtId, p){
+    p = (p == null) ? 0 : p;
+    $(barId).style.width = p + '%';
+    $(barId).style.background = availColor(p);
+    $(txtId).textContent = p + '%';
+  }
+  function countBadge(label, up, total){
+    const cls = (total > 0 && up === total) ? 'b-ok' : (up === 0 && total > 0 ? 'b-down' : 'b-warn');
+    return `<span class="badge ${cls}">${label} ${up}/${total}</span>`;
+  }
+  const byIp = (a,b) => String(a.vizinho).localeCompare(String(b.vizinho));
+
+  async function j(p){ const r = await fetch(p, {cache:'no-store'}); return r.json(); }
+
+  function renderDash(sum, routers, ospf, bfd, alarms) {
+      const s = (sum && sum[0]) || {};
+      $('c_pes').textContent = s.pes ?? 0;
+      $('c_ou').textContent  = s.ospf_up ?? 0;
+      $('c_od').textContent  = s.ospf_down ?? 0;
+      $('c_bu').textContent  = s.bfd_up ?? 0;
+      $('c_bd').textContent  = s.bfd_down ?? 0;
+      $('c_od').className = 'v ' + ((s.ospf_down > 0) ? 'v-bad' : 'v-ok');
+      $('c_bd').className = 'v ' + ((s.bfd_down > 0) ? 'v-bad' : 'v-ok');
+      setBar('a_ospf_b','a_ospf_t', s.ospf_avail);
+      setBar('a_bfd_b','a_bfd_t', s.bfd_avail);
+
+      if (alarms && alarms.length){
+        $('alarms_card').style.display = '';
+        $('alarms_body').innerHTML = alarms.map(a =>
+          `<tr><td><strong>${esc(a.router)}</strong></td><td><span class="pill pill-${(a.tipo||'').toLowerCase()}">${esc(a.tipo)}</span></td><td>${esc(a.alvo)}</td><td>${badge(a.state)}</td></tr>`
+        ).join('');
+      } else {
+        $('alarms_card').style.display = 'none';
+      }
+
+      const grp = {};
+      const ensure = r => (grp[r] || (grp[r] = { ospf: [], bfd: [] }));
+      if(routers) routers.forEach(r => ensure(r.router));
+      if(ospf) ospf.forEach(o => ensure(o.router).ospf.push(o));
+      if(bfd) bfd.forEach(b => ensure(b.router).bfd.push(b));
+
+      const nomes = Object.keys(grp).sort((a,b) => a.localeCompare(b));
+      $('pes').innerHTML = nomes.map(name => {
+        const g = grp[name];
+        g.ospf.sort(byIp); g.bfd.sort(byIp);
+        const ou = g.ospf.filter(x => x.up).length, bt = g.bfd.length, bu = g.bfd.filter(x => x.up).length;
+        const ospfRows = g.ospf.length ? g.ospf.map(o =>
+          `<tr><td>${esc(o.vizinho)}</td><td>${badge(o.state)}</td></tr>`).join('')
+          : '<tr><td colspan="2" class="muted">— sem vizinhos —</td></tr>';
+        const bfdRows = g.bfd.length ? g.bfd.map(b =>
+          `<tr><td>${esc(b.vizinho)}</td><td class="muted">${esc(b.interface)}</td><td>${badge(b.state)}</td></tr>`).join('')
+          : '<tr><td colspan="3" class="muted">— sem sessões —</td></tr>';
+        return `
+        <div class="card pe-card">
+          <div class="pe-head">
+            <span class="name">📍 ${esc(name)}</span>
+            <span class="sub">${countBadge('OSPF', ou, g.ospf.length)} ${countBadge('BFD', bu, bt)}</span>
+          </div>
+          <div class="pe-cols">
+            <div>
+              <h3>🌐 Vizinhos OSPF</h3>
+              <table><thead><tr><th>Vizinho</th><th>Status</th></tr></thead><tbody>${ospfRows}</tbody></table>
+            </div>
+            <div>
+              <h3>⚡ Sessões BFD</h3>
+              <table><thead><tr><th>Vizinho</th><th>Interface</th><th>Status</th></tr></thead><tbody>${bfdRows}</tbody></table>
+            </div>
+          </div>
+        </div>`;
+      }).join('') || '<div class="muted">Nenhum PE cadastrado.</div>';
+
+      $('updated').textContent = 'atualizado ' + new Date().toLocaleTimeString('pt-BR');
+  }
+
+  async function load(){
+    try {
+      const [sum, routers, ospf, bfd, alarms] = await Promise.all(
+        ['/api/summary','/api/routers','/api/ospf','/api/bfd','/api/alarms'].map(j)
+      );
+      localStorage.setItem('dash_cache', JSON.stringify({sum, routers, ospf, bfd, alarms}));
+      renderDash(sum, routers, ospf, bfd, alarms);
+    } catch (e) {
+      $('updated').textContent = 'erro ao carregar: ' + e.message;
+    }
+  }
+
+  try {
+      const c = localStorage.getItem('dash_cache');
+      if (c) {
+          const d = JSON.parse(c);
+          renderDash(d.sum, d.routers, d.ospf, d.bfd, d.alarms);
+      }
+  } catch(e) {}
+  
+  load();
+  setInterval(load, 30000);
+
+  const F = { type:'all', status:'all', router:'all', q:'' };
+  const rows = [...document.querySelectorAll('#nbr-table tbody tr.nbr')];
+  const total = rows.length;
+
+  function apply(){
+    let shown = 0;
+    rows.forEach(tr => {
+      const okT = F.type==='all'   || tr.dataset.type===F.type;
+      const okS = F.status==='all' || tr.dataset.status===F.status;
+      const okR = F.router==='all' || tr.dataset.router===F.router;
+      const okQ = !F.q || tr.dataset.search.includes(F.q);
+      const vis = okT && okS && okR && okQ;
+      tr.classList.toggle('is-hidden', !vis);
+      if (vis) shown++;
+    });
+    const cnt = document.getElementById('nbr-count'); if (cnt) cnt.textContent = shown;
+    const emp = document.getElementById('nbr-empty');
+    if (emp && total) emp.classList.toggle('is-hidden', shown!==0);
+  }
+
+  document.querySelectorAll('.seg[data-filter]').forEach(seg => {
+    const key = seg.dataset.filter;
+    seg.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      seg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      F[key] = b.dataset.val;
+      apply();
+    });
+  });
+  const s = document.getElementById('nbr-search');
+  if (s) s.addEventListener('input', () => { F.q = s.value.trim().toLowerCase(); apply(); });
+
+  // Auto-refresh da aba de Configuração (Jinja) a cada 30s sem recarregar a página
+  setInterval(async () => {
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    try {
+      const res = await fetch(window.location.href, {cache: 'no-store'});
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      
+      const nbr = doc.getElementById('nbr-table');
+      if(nbr && $('nbr-table')) $('nbr-table').innerHTML = nbr.innerHTML;
+      
+      const cnt = doc.getElementById('nbr-count');
+      if(cnt && $('nbr-count')) $('nbr-count').innerHTML = cnt.innerHTML;
+      
+      const rlist = doc.querySelector('.router-list');
+      if(rlist && document.querySelector('.router-list')) document.querySelector('.router-list').innerHTML = rlist.innerHTML;
+      
+      // Atualiza a referencia das linhas para o filtro funcionar nas novas
+      rows.length = 0;
+      rows.push(...document.querySelectorAll('#nbr-table tbody tr.nbr'));
+      apply();
+    } catch(e) {}
+  }, 30000);
+</script>
+
 {% endblock %}

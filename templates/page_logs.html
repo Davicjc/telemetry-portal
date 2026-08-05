@@ -1,27 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Logs - Telemetry Portal{% endblock %}
+{% block eyebrow %}Auditoria{% endblock %}
+{% block heading %}Logs{% endblock %}
+
 {% block content %}
     <div class="card">
-        <h2>📜 Logs de Auditoria</h2>
-        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">
-            Histórico de ações (somente leitura — não pode ser apagado). Mostrando os 300 mais recentes.
-        </p>
-        <table>
+        <div class="card-head" style="justify-content: space-between;">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg></div>
+                <div><h2>Logs de auditoria</h2><div class="sub">Somente leitura · 300 mais recentes</div></div>
+            </div>
+            <span class="badge2 b-mut2"><span id="log-count">{{ logs|length }}</span>&nbsp;de {{ logs|length }}</span>
+        </div>
+
+        <div class="toolbar">
+            <div class="search" style="min-width: 280px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 21-4.3-4.3M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14Z"/></svg>
+                <input type="text" id="log-search" placeholder="Buscar por usuário, ação ou detalhe…" autocomplete="off">
+            </div>
+        </div>
+
+        <div style="overflow-x:auto;">
+        <table id="log-table">
             <thead>
                 <tr><th>Data / Hora</th><th>Usuário</th><th>Ação</th><th>Detalhes</th></tr>
             </thead>
             <tbody>
                 {% for l in logs %}
-                <tr>
-                    <td style="white-space:nowrap; color: var(--text-muted);">{{ l[0] }}</td>
+                <tr class="logrow" data-search="{{ (l[1] ~ ' ' ~ l[2] ~ ' ' ~ l[3])|lower }}">
+                    <td class="mono-cell" style="white-space:nowrap;">{{ l[0] }}</td>
                     <td><strong>{{ l[1] }}</strong></td>
-                    <td>{{ l[2] }}</td>
-                    <td style="color: var(--text-muted);">{{ l[3] }}</td>
+                    <td><span class="badge2 b-vio2">{{ l[2] }}</span></td>
+                    <td class="hint">{{ l[3] }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Nenhum registro ainda.</td></tr>
+                <tr><td colspan="4"><div class="emptybox"><b>Nenhum registro ainda</b>As ações aparecem aqui conforme acontecem.</div></td></tr>
                 {% endfor %}
             </tbody>
         </table>
+        </div>
+        <div id="log-empty" class="emptybox is-hidden"><b>Nada encontrado</b>Tente outro termo de busca.</div>
     </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const lrows = [...document.querySelectorAll('#log-table tbody tr.logrow')];
+  const ls = document.getElementById('log-search');
+  if (ls) ls.addEventListener('input', () => {
+    const q = ls.value.trim().toLowerCase();
+    let shown = 0;
+    lrows.forEach(tr => { const v = !q || tr.dataset.search.includes(q); tr.classList.toggle('is-hidden', !v); if (v) shown++; });
+    document.getElementById('log-count').textContent = shown;
+    if (lrows.length) document.getElementById('log-empty').classList.toggle('is-hidden', shown!==0);
+  });
+</script>
 {% endblock %}

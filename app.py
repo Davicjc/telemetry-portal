@@ -202,6 +202,22 @@ def _tg_send_async(text):
     """Dispara o envio em thread separada para nao travar a coleta/UI."""
     threading.Thread(target=send_telegram, args=(text,), daemon=True).start()
 
+def send_telegram_sonda(text):
+    if get_setting('telegram_sonda_enabled', '0') != '1':
+        return
+    token = get_setting('telegram_sonda_token', '').strip()
+    chat_id = get_setting('telegram_sonda_chat_id', '').strip()
+    if not token or not chat_id:
+        return
+    try:
+        _tg_post(token, chat_id, text)
+    except Exception:
+        pass
+
+def _tg_send_async_sonda(text):
+    threading.Thread(target=send_telegram_sonda, args=(text,), daemon=True).start()
+
+
 
 def _format_event(ev):
     """Monta a mensagem de queda/restabelecimento para o Telegram."""
@@ -555,7 +571,7 @@ def _probe_ingest_update(probe, pppoe, metrics=None):
         conn.commit()
         conn.close()
     for m in msgs:
-        _tg_send_async(m)
+        _tg_send_async_sonda(m)
 
 
 def _check_probe_offline():
@@ -575,7 +591,7 @@ def _check_probe_offline():
         conn.commit()
         conn.close()
     for m in msgs:
-        _tg_send_async(m)
+        _tg_send_async_sonda(m)
 
 
 # --- WEB UI ROUTES ---
@@ -691,43 +707,85 @@ def telegram():
         "token": get_setting('telegram_token', ''),
         "chat_id": get_setting('telegram_chat_id', ''),
     }
-    return render_template('page_telegram.html', active='telegram', cfg=cfg, eventos=eventos)
+    cfg_sonda = {
+        "enabled": get_setting('telegram_sonda_enabled', '0') == '1',
+        "token": get_setting('telegram_sonda_token', ''),
+        "chat_id": get_setting('telegram_sonda_chat_id', ''),
+    }
+    return render_template('page_telegram.html', active='telegram', cfg=cfg, cfg_sonda=cfg_sonda, eventos=eventos)
 
 
-@app.route('/telegram/save', methods=['POST'])
+@app.route('/telegram/save_roteadores', methods=['POST'])
 @login_required
-def telegram_save():
+def telegram_save_roteadores():
     token = request.form.get('token', '').strip()
     chat_id = request.form.get('chat_id', '').strip()
     enabled = '1' if request.form.get('enabled') else '0'
     set_setting('telegram_token', token)
     set_setting('telegram_chat_id', chat_id)
     set_setting('telegram_enabled', enabled)
-    log_action('Salvou config do Telegram',
+    log_action('Salvou config do Telegram (Roteadores)',
                f'ativo={enabled}, chat_id={chat_id or "(vazio)"}')
-    flash('Configuração do Telegram salva.')
+    flash('Configuração do Telegram para Roteadores salva.')
     return redirect(url_for('telegram'))
 
 
-@app.route('/telegram/test', methods=['POST'])
+@app.route('/telegram/save_sonda', methods=['POST'])
 @login_required
-def telegram_test():
+def telegram_save_sonda():
+    token = request.form.get('token', '').strip()
+    chat_id = request.form.get('chat_id', '').strip()
+    enabled = '1' if request.form.get('enabled') else '0'
+    set_setting('telegram_sonda_token', token)
+    set_setting('telegram_sonda_chat_id', chat_id)
+    set_setting('telegram_sonda_enabled', enabled)
+    log_action('Salvou config do Telegram (Sonda)',
+               f'ativo={enabled}, chat_id={chat_id or "(vazio)"}')
+    flash('Configuração do Telegram para Sonda salva.')
+    return redirect(url_for('telegram'))
+
+
+@app.route('/telegram/test_roteadores', methods=['POST'])
+@login_required
+def telegram_test_roteadores():
     token = get_setting('telegram_token', '').strip()
     chat_id = get_setting('telegram_chat_id', '').strip()
     if not token or not chat_id:
-        flash('Preencha e salve o token e o chat_id antes de testar.')
+        flash('Preencha e salve o token e o chat_id (Roteadores) antes de testar.')
         return redirect(url_for('telegram'))
     quando = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-    msg = ("✅ <b>Telemetry Portal</b>\n"
-           "Mensagem de teste — o bot está conectado a este grupo.\n"
+    msg = ("✅ <b>Telemetry Portal - ROTEADORES</b>\n"
+           "Mensagem de teste — o bot de Roteadores está conectado.\n"
            f"Enviado em: {quando}")
     try:
         _tg_post(token, chat_id, msg)
-        log_action('Testou o Telegram', 'sucesso')
-        flash('Mensagem de teste enviada! Confira o grupo no Telegram.')
+        log_action('Testou o Telegram (Roteadores)', 'sucesso')
+        flash('Mensagem de teste enviada (Roteadores)!')
     except Exception as e:
-        log_action('Testou o Telegram', f'falha: {e}')
-        flash(f'Falha ao enviar: {e}')
+        log_action('Testou o Telegram (Roteadores)', f'falha: {e}')
+        flash(f'Falha ao enviar (Roteadores): {e}')
+    return redirect(url_for('telegram'))
+
+
+@app.route('/telegram/test_sonda', methods=['POST'])
+@login_required
+def telegram_test_sonda():
+    token = get_setting('telegram_sonda_token', '').strip()
+    chat_id = get_setting('telegram_sonda_chat_id', '').strip()
+    if not token or not chat_id:
+        flash('Preencha e salve o token e o chat_id (Sonda) antes de testar.')
+        return redirect(url_for('telegram'))
+    quando = datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+    msg = ("✅ <b>Telemetry Portal - SONDA</b>\n"
+           "Mensagem de teste — o bot de Sonda está conectado.\n"
+           f"Enviado em: {quando}")
+    try:
+        _tg_post(token, chat_id, msg)
+        log_action('Testou o Telegram (Sonda)', 'sucesso')
+        flash('Mensagem de teste enviada (Sonda)!')
+    except Exception as e:
+        log_action('Testou o Telegram (Sonda)', f'falha: {e}')
+        flash(f'Falha ao enviar (Sonda): {e}')
     return redirect(url_for('telegram'))
 
 

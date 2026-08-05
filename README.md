@@ -90,18 +90,35 @@ Na aba **Sonda**:
 2. Na RB, crie um script que coleta as métricas e envia via `/tool fetch` (modelo pronto na própria aba) e agende no `/system scheduler` (ex.: a cada 30s).
 3. As leituras aparecem em segundos: **cards de status** (PPPoE, latências, perda…) e **gráficos de linha** ao longo do tempo.
 
-A ingestão é um `POST` para `/api/probe`, tolerante a **JSON**, **form** ou **query string**. Campos: `probe` (nome da sonda), `token`, `pppoe` (`up`/`down`) e quaisquer **métricas numéricas** (ex.: `loss_bras`, `loss_core`, `latency_gateway_ms`). Exemplo simples:
+A ingestão é um `POST` para `/api/probe`, tolerante a **JSON**, **form** ou **query string**. Campos: `probe` (nome da sonda), `token`, `pppoe` (`up`/`down`) e quaisquer **métricas numéricas** (ex.: `loss_bras`, `rtt_google`, `cpu`, `mem_free`, `dns_ok`, `http_ok`). Exemplo simples:
 
 ```
 /tool fetch keep-result=no http-method=post http-data="" \
   url="http://<IP-DA-VM>:8080/api/probe?token=SEU_TOKEN&probe=uberaba&pppoe=up&loss_bras=0&loss_core=0"
 ```
 
-> **RouterOS v6:** o `/tool fetch` **não envia corpo** em POST — por isso mande tudo na **query string** (como acima). E **configure o script pelo Winbox → System → Scripts**, não pelo terminal: no terminal o caractere `?` abre a ajuda e quebra a colagem da URL.
+A aba **Sonda** traz **KPIs** (sondas online, com perda, PPPoE down), **cards por família** (perda, latência, jitter, CPU, memória, DNS/HTTP), **gráficos de linha multidestino** e um botão para **apagar uma sonda ao vivo**. O guia com o **script pronto da RB** fica dentro da própria aba.
 
-A aba **Sonda** traz **KPIs** (sondas online, com perda, PPPoE down), **tiles de perda por destino** (coloridos), **gráficos de linha multidestino** e um botão para **apagar uma sonda ao vivo** que não está mais em uso.
+> ⚠️ **Mande todas as métricas num único POST.** Cada POST vira uma leitura; a aba mostra a **última**. Se você quebrar em vários POSTs, só o do último aparece.
 
-**Alertas no Telegram** (uma vez por transição): a sonda **parou de enviar** / **voltou** (com tempo fora), o **PPPoE caiu** / **voltou**, e **perda de pacotes por destino** ao **passar** e ao **normalizar** o limite (%) configurável na aba. Se o token estiver ativo, POSTs sem o token correto são recusados (`401`).
+### RouterOS v6 vs v7 — o que dá pra medir (lições de campo)
+
+Muito do trabalho de sonda é lidar com as limitações do RouterOS. Numa **RB750Gr3 com RouterOS 6.49**:
+
+- **`/tool fetch` não envia corpo em POST** → mande tudo na **query string** (como acima).
+- **O `?` da URL quebra no New Terminal** → configure o script pelo **Winbox → System → Scripts** (campo *Source*), **nunca** colando no terminal.
+- **`/ping ... as-value` NÃO existe no v6.49** (dá `expected end of command`) → não dá pra capturar o RTT direto por script. **Solução que funciona:** rode o ping jogando a saída num arquivo e extraia o `avg-rtt` por texto —
+  ```
+  :execute script="/ping 8.8.8.8 count=5" file="pr3"
+  :local c [/file get [/file find where name~"pr3"] contents]
+  # ... :find "avg-rtt=" e :pick até "ms" ...
+  ```
+  A **perda** é confiável via `[/ping ADDR count=N]` (retorna os pacotes recebidos). **CPU, memória, DNS e HTTP** também são medidos sem `as-value`. No **RouterOS v7** o `as-value` funciona e latência/jitter saem direto.
+- **Edite sempre o script que o Scheduler dispara** (veja `on-event` em `/system scheduler print detail`). Criar um script novo à parte não muda nada se o scheduler continua chamando o antigo.
+
+O script completo (perda ×5 + latência ×5 + PPPoE + CPU + memória + DNS + HTTP) está pronto para copiar dentro da **aba Sonda**.
+
+**Alertas no Telegram** (uma vez por transição, com detecção de borda): a sonda **parou de enviar** / **voltou** (com tempo fora), **PPPoE** caiu/voltou, e cada métrica ao **passar** e ao **normalizar** seu limite — **perda** (%), **latência** (ms), **jitter** (ms), **CPU** (%), **memória livre** (%) e **DNS/HTTP** (falha). Os limites são configuráveis na aba. Se o token estiver ativo, POSTs sem o token correto são recusados (`401`).
 
 ---
 
