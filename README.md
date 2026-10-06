@@ -1,4 +1,19 @@
-# 🛰️ Telemetry Portal — Monitoramento OSPF & BFD (MikroTik)
+<p align="center">
+  <img src=".github/readme/banner.png" alt="telemetry-portal" width="100%">
+</p>
+
+<p align="center">
+  <img alt="👤 Projeto próprio · usado por clientes" src="https://img.shields.io/badge/%F0%9F%91%A4_Projeto_pr%C3%B3prio_%C2%B7_usado_por_clientes-8957E5?style=for-the-badge">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="Flask" src="https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white">
+  <img alt="MikroTik" src="https://img.shields.io/badge/MikroTik-293239?style=for-the-badge&logo=mikrotik&logoColor=white">
+  <img alt="Grafana" src="https://img.shields.io/badge/Grafana-F46800?style=for-the-badge&logo=grafana&logoColor=white">
+  <img alt="Bash" src="https://img.shields.io/badge/Bash-4EAA25?style=for-the-badge&logo=gnubash&logoColor=white">
+</p>
+
+<p align="center">Portal web leve e auto-hospedado para monitorar vizinhanças OSPF e sessões BFD de roteadores MikroTik, com painel próprio e Grafana.</p>
+
+---
 
 Portal web leve, auto-hospedado, para monitorar **vizinhanças OSPF** e **sessões BFD** de roteadores MikroTik (PEs). Ele coleta os dados direto da API do RouterOS e mostra tudo num painel bonito — **sem precisar de Zabbix**. Também expõe os dados para o **Grafana** (opcional).
 
@@ -220,3 +235,7 @@ python app.py         # sobe em http://0.0.0.0:8080
 ## 📜 Licença
 
 MIT — veja [LICENSE](LICENSE). Use à vontade, inclusive comercialmente.
+
+---
+
+<p align="center">Feito por <a href="https://github.com/Davicjc">Davi Castro</a> · <a href="https://davicjc.com">davicjc.com</a></p>
