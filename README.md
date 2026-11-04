@@ -234,7 +234,7 @@ python app.py         # sobe em http://0.0.0.0:8080
 
 ## 📜 Licença
 
-MIT — veja [LICENSE](LICENSE). Use à vontade, inclusive comercialmente.
+Código proprietário de **Davi Castro** e **Audicom Telecom**, todos os direitos reservados. Veja [LICENSE](LICENSE).
 
 ---
 
