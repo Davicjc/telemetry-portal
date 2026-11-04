@@ -1,35 +1,21 @@
-Licença proprietária — todos os direitos reservados
+MIT License
 
 Copyright (c) 2026 Davi Castro e Audicom Telecom
 
-Este repositório e todo o seu conteúdo (código-fonte, design, textos, imagens e
-demais arquivos) são de propriedade de Davi Castro e Audicom Telecom.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-Não é permitido copiar, modificar, distribuir, publicar, sublicenciar, vender ou
-usar este conteúdo, no todo ou em parte, sem autorização prévia e por escrito
-dos titulares acima.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-O fato de o código estar visível no GitHub não concede nenhuma dessas permissões.
-
-Marcas, logotipos, fotos e textos de Audicom Telecom continuam sendo de propriedade de Audicom Telecom.
-
-Contato: contato@davicjc.com
-
--------------------------------------------------------------------------------
-
-Proprietary license — all rights reserved
-
-Copyright (c) 2026 Davi Castro and Audicom Telecom
-
-This repository and all of its contents (source code, design, texts, images and
-other files) belong to Davi Castro and Audicom Telecom.
-
-Copying, modifying, distributing, publishing, sublicensing, selling or using
-this content, in whole or in part, is not permitted without the prior written
-consent of the copyright holders above.
-
-The code being visible on GitHub does not grant any of these permissions.
-
-Trademarks, logos, photos and texts of Audicom Telecom remain the property of Audicom Telecom.
-
-Contact: contato@davicjc.com
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
