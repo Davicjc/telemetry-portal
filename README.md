@@ -234,7 +234,7 @@ python app.py         # sobe em http://0.0.0.0:8080
 
 ## 📜 Licença
 
-MIT — veja [LICENSE](LICENSE). Use à vontade, inclusive comercialmente.
+MIT com crédito de autoria obrigatório — veja [LICENSE](LICENSE). Use à vontade, inclusive comercialmente, mantendo o selo visível.
 
 ---
 
